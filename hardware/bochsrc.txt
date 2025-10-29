@@ -1,17 +1,20 @@
-# RAM size
+# 1. 指向你刚编译安装的 BIOS
+romimage: file=/usr/local/share/bochs/BIOS-bochs-latest
+    
+# 2. 指向你刚编译安装的 VGABIOS (注意.bin后缀)
+vgaromimage: file=/usr/local/share/bochs/VGABIOS-lgpl-latest
+
+# 3. 指向你刚编译安装的 Keymaps
+keyboard: keymap=/usr/local/share/bochs/keymaps/sdl2-pc-us.map
+
+# 4. 使用我们刚编译的 SDL2 图形库
+display_library: sdl2
+
+# --- 你的其他配置 ---
 megs: 32
-# Change to your Bochs installation path
-romimage: file=/usr/share/bochs/BIOS-bochs-latest
-vgaromimage: file=/usr/share/bochs/VGABIOS-lgpl-latest
-
-# Disk
 boot: disk
-ata0: enabled=1, ioaddr1=0x01f0, ioaddr2=0x03f0, irq=14
-ata0-master: type=disk, path="scroll.img", mode=flat, cylinders=6, heads=16, spt=63
-
+ata0-master: type=disk, path="scroll.img", mode=flat, cylinders=20, heads=16, spt=63
 log: bochsout.txt
-
 mouse: enabled=0
-keyboard_mapping: enabled=1, map=/usr/share/bochs/keymaps/x11-pc-us.map
 clock: sync=realtime
 cpu: ips=1000000
