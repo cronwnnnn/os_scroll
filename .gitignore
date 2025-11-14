@@ -1,0 +1,13 @@
+scroll.img
+objdump.txt
+bochsout.txt
+kernel_dump.txt
+kernel
+mbr
+loader
+lib/
+bin/
+user/progs
+user/lib
+user/user_disk_image
+user/disk_image_writer
