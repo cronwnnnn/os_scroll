@@ -61,5 +61,6 @@ struct gdt_entry {
 } __attribute__((packed)); //取消编译器添加的对齐填充，十分重要
 typedef struct gdt_entry gdt_entry_t;
 
+void init_gdt();
 
 #endif
