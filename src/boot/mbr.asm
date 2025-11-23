@@ -1,5 +1,5 @@
 ;mbr------------
-%include"boot.inc"
+%include"boot/boot.inc"
 
 SECTION mbr vstart=MBR_BASE_ADDR
 

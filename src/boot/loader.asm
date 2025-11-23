@@ -1,5 +1,5 @@
 ;loader------------
-%include"boot.inc"
+%include"boot/boot.inc"
 
 SECTION loader vstart=LOADER_BASE_ADDR
 
