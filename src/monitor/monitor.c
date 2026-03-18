@@ -18,10 +18,14 @@ static int16_t cursor_x ;
 static int16_t cursor_y ;
 
 static void mov_cursor(){
-    uint16_t pos = cursor_y * 80 + cursor_x;
+    uint16_t pos = cursor_y * VGA_WIDTH + cursor_x;
 
+    //cursor的位置占16bit
+    //14表示接下来要输入cursor的高8位
     outb(0x3D4, 14);
+    //输入高8位
     outb(0x3D5, pos >> 8);
+    //15为cursor位置的低8位
     outb(0x3D4, 15);
     outb(0x3D5, pos);
 }
@@ -40,10 +44,10 @@ void monitor_print(const char* str){
 }
 
 void monitor_print_char(char c){
-    if(c == 0x08 && cursor_x > 0){
+    if(c == 0x08 && cursor_x > 0){//back
         cursor_x--;
     }
-    else if(c == 0x09){
+    else if(c == 0x09){// Tab
         cursor_x = (cursor_x + 8) & ~(8 - 1);
     }
     else if(c == '\n'){
@@ -70,16 +74,19 @@ void monitor_print_char(char c){
 }
 
 void scroll_screen(){
+    // 如果当前屏幕没满，不需要scroll
     if(cursor_y < VGA_HEIGHT){
         return;
     }
     int i;
+    // 将每一行的内容向上移动一行，最后一行清空
     for(i = 0; i < (VGA_HEIGHT - 1) * VGA_WIDTH; i++){
         video_memory[i] = video_memory[i + VGA_WIDTH];
     }
     for(i = (VGA_HEIGHT - 1) * VGA_WIDTH; i < VGA_HEIGHT * VGA_WIDTH; i++){
         video_memory[i] = (defult_color << 8) | ' ';
     }
+    //如果scroll则光标一定在最后一行的下一行的开头位置
     cursor_y = VGA_HEIGHT - 1;
     cursor_x = 0;
     mov_cursor();

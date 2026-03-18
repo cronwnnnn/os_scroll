@@ -2,7 +2,7 @@
 #include "mem/gdt.h"
 
 int main(){
-    monitor_clear();
+    monitor_clear();  //清空屏幕
     monitor_print("Hello, World!\n");
     monitor_print("This is a simple OS kernel with scrolling support.\n");
     init_gdt();
