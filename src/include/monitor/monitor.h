@@ -29,5 +29,6 @@
 
 void monitor_print(const char* str);
 void monitor_clear();
+void monitor_printf(const char *format, ...);
 
 #endif

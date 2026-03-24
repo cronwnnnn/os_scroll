@@ -7,5 +7,6 @@ int main(){
     monitor_print("This is a simple OS kernel with scrolling support.\n");
     init_gdt();
     monitor_print("GDT initialized successfully.\n");
+    monitor_printf("i am a kernel, my address is %d\n", 1111);
     while(1){}
 }

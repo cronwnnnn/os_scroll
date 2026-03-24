@@ -8,6 +8,9 @@
 extern uint32_t get_esp();
 void scroll_screen();
 void monitor_print_char(char c);
+void monitor_write_dec(int32_t num);
+void monitor_write_str(const char* str);
+void monitor_printf_args(const char *format, void *arg_ptr);
 
 // use array to represent video memory, uint16_T 是为了方便当作数组来访问显存，因为一个字符占两个字节
 uint16_t* video_memory = (uint16_t*)0xC00B8000;
@@ -36,11 +39,7 @@ static int16_t get_cursor_offset(){
 }
 
 void monitor_print(const char* str){
-    int i = 0;
-    while(str[i] != 0){
-        monitor_print_char(str[i]);
-        i++;
-    }
+    monitor_write_str(str);
 }
 
 void monitor_print_char(char c){
@@ -101,4 +100,85 @@ void monitor_clear(){
     cursor_x = 0;
     cursor_y = 0;
     mov_cursor();
+}
+
+void monitor_printf(const char *format, ...){
+    void *arg = (void *)(&format);
+    arg += 4;// skip format string
+    monitor_printf_args(format, arg);
+                
+
+}
+
+void monitor_write_str(const char* str){
+    int i = 0;
+    while(str[i] != 0){
+        monitor_print_char(str[i]);
+        i++;
+    }
+}
+
+
+void monitor_write_dec(int32_t num){
+    if(num == 0){
+        monitor_print_char('0');
+        return;
+    }
+    if(num < 0){
+        monitor_print_char('-');
+        num = -num;
+    }
+    //
+    uint32_t final = num;
+    char itoc[30] = {};
+    int32_t i = 0;
+    for(i = 0; num && i < 30; i++){
+        // 此处赋值的是ascii码，'0'的ascii码是48，因此需要加上'0',才是真正单个数字的字符
+        itoc[i] = num % 10 + '0'; 
+        num /= 10;
+    }
+    i--;
+    for(; i >= 0; i--){
+        if(itoc[i]){
+            monitor_print_char(itoc[i]);
+        }
+    }
+}
+
+
+void monitor_printf_args(const char *format, void *arg_ptr){
+    int32_t i = 0;
+    while(format[i] != 0){
+        if(format[i] == '%'){
+            i++;
+            if(format[i] == 0){
+                break;
+            }
+            if(format[i] == 'd'){
+                int32_t num = *((int32_t*)arg_ptr);
+                arg_ptr += 4;
+                monitor_write_dec(num);
+            }
+            else if(format[i] == 's'){
+                // arg_ptr是一个指向指针的指针，他作为指针指向了栈中字符串的指针，因此声明为char**，
+                // 最后解引用一次获得字符串的指针，即str
+                char* str = *((char**)arg_ptr);
+                arg_ptr += 4;
+                monitor_write_str(str);
+            }
+            else if(format[i] == 'c'){
+                char c = *((char*)arg_ptr);
+                arg_ptr += 4;
+                monitor_print_char(c);
+            }
+            else {
+                monitor_print_char('%');
+                monitor_print_char(format[i]);
+            }
+        }else {
+            monitor_print_char(format[i]);
+        }
+        i++;
+    }
+
 }
