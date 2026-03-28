@@ -14,5 +14,7 @@ typedef unsigned char uint8_t;
 
 typedef unsigned char bool;
 
+typedef uint32_t size_t;
+
 
 #endif // COMMON_TYPE_H
