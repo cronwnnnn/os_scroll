@@ -18,3 +18,6 @@ log: bochsout.txt
 mouse: enabled=0
 clock: sync=realtime
 cpu: ips=1000000
+
+# 启用魔法断点
+magic_break: enabled=1
