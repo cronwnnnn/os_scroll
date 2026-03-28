@@ -288,6 +288,8 @@ setup_page:
   mov eax, PAGE_DIR_PHYSICAL_ADDR - PAGE_SIZE
   or eax, PG_P | PG_RW_W | PG_US_U
   ;for first 1MB physical memory
+  ; page to first and 768th entry of page dir,
+  ; the virtual address 0x00000000 and 0xC0000000 can both map to the first 1MB physical memory
   mov [PAGE_DIR_PHYSICAL_ADDR], eax
   mov [PAGE_DIR_PHYSICAL_ADDR + 768 * 4], eax
   ;for pde

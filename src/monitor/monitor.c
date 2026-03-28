@@ -10,7 +10,7 @@ void scroll_screen();
 void monitor_print_char(char c);
 void monitor_write_dec(int32_t num);
 void monitor_write_str(const char* str);
-void monitor_printf_args(const char *format, void *arg_ptr);
+void monitor_printf_args(const char *format, char *arg_ptr);
 
 // use array to represent video memory, uint16_T 是为了方便当作数组来访问显存，因为一个字符占两个字节
 uint16_t* video_memory = (uint16_t*)0xC00B8000;
@@ -103,7 +103,7 @@ void monitor_clear(){
 }
 
 void monitor_printf(const char *format, ...){
-    void *arg = (void *)(&format);
+    char *arg = (char *)(&format);
     arg += 4;// skip format string
     monitor_printf_args(format, arg);
                 
@@ -129,7 +129,6 @@ void monitor_write_dec(int32_t num){
         num = -num;
     }
     //
-    uint32_t final = num;
     char itoc[30] = {};
     int32_t i = 0;
     for(i = 0; num && i < 30; i++){
@@ -146,7 +145,7 @@ void monitor_write_dec(int32_t num){
 }
 
 
-void monitor_printf_args(const char *format, void *arg_ptr){
+void monitor_printf_args(const char *format, char *arg_ptr){
     int32_t i = 0;
     while(format[i] != 0){
         if(format[i] == '%'){
@@ -170,6 +169,9 @@ void monitor_printf_args(const char *format, void *arg_ptr){
                 char c = *((char*)arg_ptr);
                 arg_ptr += 4;
                 monitor_print_char(c);
+            }
+            else if(format[i] == '%'){
+                monitor_print_char('%');
             }
             else {
                 monitor_print_char('%');
