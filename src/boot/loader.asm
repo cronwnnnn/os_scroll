@@ -509,6 +509,21 @@ do_load_kernel:
   push dword [ebx + 8]  ; dst addr
   call memmory_copy
   add esp, 12
+  
+  ;set bss
+  mov eax, [ebx + 20] ; p_memsz
+  sub eax, [ebx + 16] ; p_filesz
+  cmp eax, 0
+  jle .next_program_header
+
+  push ecx                ; save loop counter
+  push eax              ; length
+  mov eax, [ebx + 8]  ; dst addr
+  add eax, [ebx + 16] ; dst addr + filesz
+  push eax              ; start addr
+  call clear_memory
+  add esp, 8
+  pop ecx                ; restore loop counter
 
 .next_program_header:
   add ebx, edx
