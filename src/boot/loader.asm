@@ -320,6 +320,14 @@ setup_page:
   loop .create_pte
 ;************* create and first page table**************
 
+;************* set other pte zero**************
+  mov eax, 254 * PAGE_SIZE
+  push eax
+  mov eax, PAGE_DIR_PHYSICAL_ADDR + PAGE_SIZE
+  push eax
+  call clear_memory
+  add esp, 8
+;************* set other pte zero**************
 
   call enable_page
   ret
@@ -559,14 +567,16 @@ clear_memory:
   push ebp
   mov ebp, esp
   push ecx
+  push edi
+  push eax
 
-  mov eax, [ebp + 8]   ; start addr
+  mov edi, [ebp + 8]   ; start addr
   mov ecx, [ebp + 12]  ; size
-.clear_byte:
-  mov byte [eax], 0
-  add eax, 1
-  loop .clear_byte
+  mov al, 0            ; value to fill
+  rep stosb
 
+  pop eax
+  pop edi
   pop ecx
   pop ebp
   ret
