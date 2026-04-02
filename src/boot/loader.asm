@@ -621,10 +621,6 @@ read_disk_32:
   mov al, 0x20
   out dx, al
 
-  mov esi, edi  ; 扇区数存入 esi 作为外层循环计数
-
-.read_each_sector:
-  mov dx, 0x1f7
 .hd_not_ready:
   nop
   in al, dx
@@ -632,9 +628,9 @@ read_disk_32:
   cmp al, 0x08
   jnz .hd_not_ready
 
-  ; di = cx = sector count
-  ; 每次只读取一个扇区 (512字节 = 256 words)
-  mov ecx, 256
+  ; 恢复最原始的连续读取所有扇区方式
+  mov ecx, edi
+  shl ecx, 8
 
   mov dx, 0x1f0
 
@@ -643,10 +639,6 @@ read_disk_32:
   mov [ebx], ax
   add ebx, 2
   loop .go_on_read_data
-
-  dec esi
-  cmp esi, 0
-  jg .read_each_sector
 
   ret
 
