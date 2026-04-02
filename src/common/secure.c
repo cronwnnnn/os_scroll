@@ -1,9 +1,15 @@
 #include "common/secure.h"
 #include "monitor/monitor.h"
 
-void Panic(const char* message) {
+extern void monitor_printf_args(const char *format, char *arg_ptr);
+
+void Panic(const char* message, ...) {
     monitor_print("KERNEL PANIC: ");
-    monitor_print(message);
+    
+    char *arg = (char *)(&message);
+    arg += 4;
+    monitor_printf_args(message, arg);
+    
     monitor_print("\nSystem halted.\n");
 
     // 停止系统运行
