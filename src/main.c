@@ -2,6 +2,10 @@
 #include "mem/gdt.h"
 #include "interrupt/interrupt.h"
 #include "interrupt/time.h"
+#include "mem/page.h"
+#include "common/types.h"
+#include "common/secure.h"
+
 
 int main(){
     monitor_clear();  //清空屏幕
@@ -13,5 +17,10 @@ int main(){
     init_idt();
     init_timer(TIMER_FREQUENCY);
     monitor_print("IDT and timer initialized successfully.\n");
+    init_page();
+    
+
+
+
     while(1){}
 }
