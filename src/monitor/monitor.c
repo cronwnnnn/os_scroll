@@ -9,6 +9,8 @@ extern uint32_t get_esp();
 void scroll_screen();
 void monitor_print_char(char c);
 void monitor_write_dec(int32_t num);
+void monitor_write_udec(uint32_t num);
+void monitor_write_hex(uint32_t num);
 void monitor_write_str(const char* str);
 void monitor_printf_args(const char *format, char *arg_ptr);
 
@@ -144,6 +146,46 @@ void monitor_write_dec(int32_t num){
     }
 }
 
+void monitor_write_udec(uint32_t num){
+    if(num == 0){
+        monitor_print_char('0');
+        return;
+    }
+    
+    char itoc[30] = {};
+    int32_t i = 0;
+    for(i = 0; num && i < 30; i++){
+        itoc[i] = num % 10 + '0'; 
+        num /= 10;
+    }
+    i--;
+    for(; i >= 0; i--){
+        if(itoc[i]){
+            monitor_print_char(itoc[i]);
+        }
+    }
+}
+
+void monitor_write_hex(uint32_t num){
+    if(num == 0){
+        monitor_print_char('0');
+        return;
+    }
+    
+    char itoc[30] = {};
+    int32_t i = 0;
+    for(i = 0; num && i < 30; i++){
+        uint32_t rem = num % 16;
+        itoc[i] = (rem < 10) ? (rem + '0') : (rem - 10 + 'a');
+        num /= 16;
+    }
+    i--;
+    for(; i >= 0; i--){
+        if(itoc[i]){
+            monitor_print_char(itoc[i]);
+        }
+    }
+}
 
 void monitor_printf_args(const char *format, char *arg_ptr){
     int32_t i = 0;
@@ -157,6 +199,16 @@ void monitor_printf_args(const char *format, char *arg_ptr){
                 int32_t num = *((int32_t*)arg_ptr);
                 arg_ptr += 4;
                 monitor_write_dec(num);
+            }
+            else if(format[i] == 'u'){
+                uint32_t unum = *((uint32_t*)arg_ptr);
+                arg_ptr += 4;
+                monitor_write_udec(unum);
+            }
+            else if(format[i] == 'x' || format[i] == 'X'){
+                uint32_t hexnum = *((uint32_t*)arg_ptr);
+                arg_ptr += 4;
+                monitor_write_hex(hexnum);
             }
             else if(format[i] == 's'){
                 // arg_ptr是一个指向指针的指针，他作为指针指向了栈中字符串的指针，因此声明为char**，

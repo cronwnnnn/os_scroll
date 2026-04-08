@@ -3,7 +3,6 @@
 #include "monitor/monitor.h"
 #include "common/types.h"
 #include "utils/bit_map.h"
-#include "mem/page.h"
 #include "common/secure.h"
 #include "common/stdlib.h"
 #include "utils/utils.h"
