@@ -14,7 +14,7 @@ CFLAGS = -m32 -Isrc/include -fno-builtin -fno-stack-protector -nostdlib -fno-pic
 ASMFLAGS = -f elf32 -I src/include
 LDFLAGS = -m elf_i386 -T link.ld
 
-KERNEL = $(BUILD_DIR)/kernel.bin
+KERNEL = $(BUILD_DIR)/kernel.elf
 MBR = $(BUILD_DIR)/mbr.bin
 LOADER = $(BUILD_DIR)/loader.bin
 
@@ -52,7 +52,7 @@ all: image
 image:$(KERNEL) $(MBR) $(LOADER)
 	dd if=$(BUILD_DIR)/mbr.bin of=hardware/scroll.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(BUILD_DIR)/loader.bin of=hardware/scroll.img bs=512 count=8 seek=1 conv=notrunc
-	dd if=$(BUILD_DIR)/kernel.bin of=hardware/scroll.img bs=512 count=2048 seek=9 conv=notrunc
+	dd if=$(BUILD_DIR)/kernel.elf of=hardware/scroll.img bs=512 count=2048 seek=9 conv=notrunc
 
 $(MBR): $(SRC_DIR)/boot/mbr.asm
 	@echo "Assembling MBR..."

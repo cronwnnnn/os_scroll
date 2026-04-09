@@ -94,6 +94,9 @@ setup_protection_mode:
     mov dx, 0x00
     call print_message_real_mode
 
+    ; disable interrupts before switching mode!
+    cli
+
     ;enable A20
     in al, 0x92
     or al, 0000_0010b
@@ -583,13 +586,24 @@ clear_memory:
 
 
   ; read data from disk, in 32-bit mode
+; args:
+;  eax: start LBA sector
+;  ebx: dest memory address
+;  ecx: sector count
 read_disk_32:
-  mov esi, eax
-  mov edi, ecx
+  push esi
+  push edi
+  push eax
+  push ebx
+  push ecx
 
+  mov esi, eax        ; LBA start
+  mov edi, ecx        ; Total sectors to read
+
+.read_loop:
   ; sector count
   mov dx, 0x01f2
-  mov al, cl
+  mov al, 1           ; Always read 1 sector per command
   out dx, al
 
   mov eax, esi
@@ -611,12 +625,11 @@ read_disk_32:
   ; device reg: LBA[24:28]
   shr eax, 8
   and al, 0x0f
-
-  or al, 0xe0  ; 0x1110, LBA mode
+  or al, 0xe0         ; LBA mode
   mov dx, 0x1f6
   out dx, al
 
-  ; command reg: 0x2 read, start reading
+  ; command reg: 0x20 read
   mov dx, 0x1f7
   mov al, 0x20
   out dx, al
@@ -624,21 +637,27 @@ read_disk_32:
 .hd_not_ready:
   nop
   in al, dx
-  and al, 0x88  ; bit 7 (busy), bit 3 (data ready)
+  and al, 0x88        ; bit 7 (busy), bit 3 (data ready)
   cmp al, 0x08
   jnz .hd_not_ready
 
-  ; 恢复最原始的连续读取所有扇区方式
-  mov ecx, edi
-  shl ecx, 8
-
+  ; read 256 words (1 sector)
+  mov ecx, 256
   mov dx, 0x1f0
-
-.go_on_read_data:
+.read_data:
   in ax, dx
   mov [ebx], ax
   add ebx, 2
-  loop .go_on_read_data
+  loop .read_data
 
+  inc esi             ; Next LBA
+  dec edi             ; Decrement total sector count
+  jnz .read_loop
+
+  pop ecx
+  pop ebx
+  pop eax
+  pop edi
+  pop esi
   ret
 

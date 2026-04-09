@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Kernel Debug (QEMU+GDB)",
+            "type": "cppdbg",
+            "request": "launch",
+            // 依然指向你编译出的带调试符号的 C 语言内核文件
+            "program": "${workspaceFolder}/build/kernel.elf", 
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "gdb",
+            "miDebuggerServerAddress": "localhost:1234",
+            // 【极其关键】因为一开始是 16位 BIOS，GDB 找不到你的 main 函数，所以这里设为 false
+            "stopAtEntry": false, 
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}

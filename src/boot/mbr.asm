@@ -61,15 +61,18 @@ read_disk:
   shr eax, 8
   and al, 0x0f
 
-  or al, 0xe0  ; 0x1110, LBA mode
+  or al, 0xe0  ; 0x1110, LBA mode (LBA starts here, the 0xe0 is for Master Drive + LBA)
   mov dx, 0x1f6
   out dx, al
 
-  ; command reg: 0x2 read, start reading
+  ; command reg: 0x20 read, start reading
   mov dx, 0x1f7
   mov al, 0x20
   out dx, al
 
+  mov di, cx  ; cx holds sector count, save it for outer loop tracking
+.read_each_sector:
+  mov dx, 0x1f7
 .not_ready:
   nop
   in al, dx
@@ -77,13 +80,8 @@ read_disk:
   cmp al, 0x08
   jnz .not_ready
 
-  ; di = cx = sector count
-  ; read 2 bytes time, so loop (sector count) * 512 / 2 times
-  mov ax, di
-  mov dx, 256
-  mul dx
-  mov cx, ax
-
+  ; Every time it is ready, read ONE sector (256 words = 512 bytes)
+  mov cx, 256
   mov dx, 0x1f0
 
 .go_on_read:
@@ -91,6 +89,11 @@ read_disk:
   mov [bx], ax
   add bx, 2
   loop .go_on_read
+
+  dec di
+  cmp di, 0
+  jg .read_each_sector
+  
   ret
 
 
