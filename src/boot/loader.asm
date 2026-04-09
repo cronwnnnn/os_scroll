@@ -280,9 +280,11 @@ mov_cursor:
 
  ;----------------------------- set page -------------------------------
 setup_page:
-  ;clear mem for page
-  push dword PAGE_SIZE
-  push dword PAGE_DIR_PHYSICAL_ADDR
+  ;clear mem for page dir and all page tables (256 pages in total), lest wrong present bit = 1
+  mov eax, 256 * PAGE_SIZE
+  push eax
+  mov eax, PAGE_DIR_PHYSICAL_ADDR - PAGE_SIZE
+  push eax
   call clear_memory
   add esp, 8
 
@@ -322,15 +324,6 @@ setup_page:
   add edx, 4
   loop .create_pte
 ;************* create and first page table**************
-
-;************* set other pte zero**************
-  mov eax, 254 * PAGE_SIZE
-  push eax
-  mov eax, PAGE_DIR_PHYSICAL_ADDR + PAGE_SIZE
-  push eax
-  call clear_memory
-  add esp, 8
-;************* set other pte zero**************
 
   call enable_page
   ret
