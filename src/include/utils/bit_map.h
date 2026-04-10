@@ -5,7 +5,7 @@
 
 typedef struct {
     uint32_t* bitarray;
-    uint8_t alloc_array; // 用于表示是不是根据bitmap分配的内存，0表示不是，1表示是。防止误释放非bitmap分配的静态内存
+    uint8_t alloc_array; // 用于表示是否可以free bitarray指向的数组
     size_t arraysize;  // 位图的大小，以位为单位
     size_t totalbits;
 

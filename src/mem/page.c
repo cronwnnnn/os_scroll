@@ -200,7 +200,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
             pte->user = 1;
             pte->frame = frame;
             
-            // 分配完成之后刷新页目录使其能被查到,并清理页表处的物理地址，防止错误映射
+            // 分配完成之后刷新页目录使其能被查到,并清理分配物理地址处的内存，防止访问到之前该物理地址的内容
             reload_page_dir(current_page_directory);
             clear_page(vaddr);
         }
