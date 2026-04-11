@@ -179,6 +179,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
     // 若是frame为正，说明指定了物理内存，就不需要分配了，直接映射即可
     // 用于fork这种方式
     if(frame > 0){
+        Assert(pte->present == 0);
         pte->present = 1;
         pte->user = 1;
         pte->rw = 1;
