@@ -6,6 +6,7 @@
 #define true 1
 #define false 0
 
+typedef void* type_t;
 typedef int int32_t;
 typedef unsigned int uint32_t;
 typedef short int16_t;

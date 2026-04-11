@@ -119,5 +119,7 @@ typedef void (*isr_t)(isr_params_t);
 void isr_handler(isr_params_t regs);
 void register_interrupt_handler(uint32_t int_num, isr_t handler);
 void init_idt();
+void disable_interrupt();
+void enable_interrupt();
 
 #endif

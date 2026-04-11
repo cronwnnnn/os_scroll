@@ -3,7 +3,6 @@
 
 #include "common/types.h"
 
-typedef void* type_t;
 typedef int32_t (*compare_func_t)(type_t, type_t);
 
 typedef struct {
