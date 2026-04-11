@@ -55,5 +55,6 @@ typedef struct page_directory{
 
 
 void init_page();
+void map_page(uint32_t vaddr);
 
 #endif // INTERRUPT_PAGE_H

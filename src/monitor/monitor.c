@@ -109,7 +109,6 @@ void monitor_printf(const char *format, ...){
     arg += 4;// skip format string
     monitor_printf_args(format, arg);
                 
-
 }
 
 void monitor_write_str(const char* str){
@@ -126,17 +125,20 @@ void monitor_write_dec(int32_t num){
         monitor_print_char('0');
         return;
     }
+    uint32_t unum;
     if(num < 0){
         monitor_print_char('-');
-        num = -num;
+        unum = (uint32_t)(-num);
+    } else {
+        unum = num;
     }
     //
     char itoc[30] = {};
     int32_t i = 0;
-    for(i = 0; num && i < 30; i++){
+    for(i = 0; unum && i < 30; i++){
         // 此处赋值的是ascii码，'0'的ascii码是48，因此需要加上'0',才是真正单个数字的字符
-        itoc[i] = num % 10 + '0'; 
-        num /= 10;
+        itoc[i] = unum % 10 + '0'; 
+        unum /= 10;
     }
     i--;
     for(; i >= 0; i--){
@@ -215,6 +217,9 @@ void monitor_printf_args(const char *format, char *arg_ptr){
                 // 最后解引用一次获得字符串的指针，即str
                 char* str = *((char**)arg_ptr);
                 arg_ptr += 4;
+                if (!str) {
+                    str = "(null)";
+                }
                 monitor_write_str(str);
             }
             else if(format[i] == 'c'){
