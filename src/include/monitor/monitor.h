@@ -30,6 +30,9 @@
 void monitor_print(const char* str);
 void monitor_clear();
 void monitor_printf(const char *format, ...);
-void monitor_printf_args(const char *format, char *arg_ptr);
+void monitor_printf_args_nolock(const char *format, char *arg_ptr);
+void monitor_print_panic(const char* str);
+void monitor_printf_panic(const char *format, ...);
+
 
 #endif

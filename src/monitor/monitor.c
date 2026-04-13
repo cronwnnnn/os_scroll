@@ -14,6 +14,7 @@ void monitor_write_udec(uint32_t num);
 void monitor_write_hex(uint32_t num);
 void monitor_write_str(const char* str);
 void monitor_printf_args(const char *format, char *arg_ptr);
+void monitor_printf_args_nolock(const char *format, char *arg_ptr);
 
 // use array to represent video memory, uint16_T 是为了方便当作数组来访问显存，因为一个字符占两个字节
 uint16_t* video_memory = (uint16_t*)0xC00B8000;
@@ -54,6 +55,11 @@ void monitor_print(const char* str){
     monitor_write_str(str);
     yieldlock_unlock(&monitor_lock);
 }
+
+void monitor_print_panic(const char* str){
+    monitor_write_str(str);
+}
+
 
 void monitor_print_char(char c){
     if(c == 0x08 && cursor_x > 0){//back
@@ -122,6 +128,13 @@ void monitor_printf(const char *format, ...){
     char *arg = (char *)(&format);
     arg += 4;// skip format string
     monitor_printf_args(format, arg);
+                
+}
+
+void monitor_printf_panic(const char *format, ...){
+    char *arg = (char *)(&format);
+    arg += 4;// skip format string
+    monitor_printf_args_nolock(format, arg);
                 
 }
 
@@ -203,8 +216,14 @@ void monitor_write_hex(uint32_t num){
     }
 }
 
+
 void monitor_printf_args(const char *format, char *arg_ptr){
     yieldlock_lock(&monitor_lock);
+    monitor_printf_args_nolock(format, arg_ptr);
+    yieldlock_unlock(&monitor_lock);
+}
+
+void monitor_printf_args_nolock(const char *format, char *arg_ptr){
     int32_t i = 0;
     while(format[i] != 0){
         if(format[i] == '%'){
@@ -255,5 +274,4 @@ void monitor_printf_args(const char *format, char *arg_ptr){
         i++;
     }
 
-    yieldlock_unlock(&monitor_lock);
 }
