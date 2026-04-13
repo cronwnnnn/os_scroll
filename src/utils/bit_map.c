@@ -1,6 +1,10 @@
 #include "utils/bit_map.h"
 #include "common/types.h"
 #include "common/secure.h"
+#include "mem/kheap.h"
+
+
+
 bool bitmap_init(bitmap_t* this, uint32_t* bitarray, size_t totalbits);
 
 
@@ -16,13 +20,20 @@ bitmap_t bitmap_create(uint32_t* bitarray, size_t totalbits) {
 
 // 只是bitmap_mem的初始化函数，位图的内存由调用者提供，没用自动创建bitmap
 bool bitmap_init(bitmap_t* this, uint32_t* bitarray, size_t totalbits) {
+    this->arraysize = (totalbits + 31) / 32;  // 每个uint32_t有32位
+    this->totalbits = totalbits;
+
+    if(bitarray == NULL){
+        bitarray = (uint32_t*) kmalloc(this->arraysize * 4);
+        this->alloc_array = true;
+    }else{
+        this->alloc_array = false;
+    }
+
     if(bitarray == nullptr || totalbits == 0) {
         return false;
     }
     this->bitarray = bitarray;
-    this->alloc_array = 0;
-    this->arraysize = (totalbits + 31) / 32;  // 每个uint32_t有32位
-    this->totalbits = totalbits;
 
     for(size_t i = 0; i < this->arraysize; i++) {
         this->bitarray[i] = 0;  // 初始化所有位为0，表示全部未分配
@@ -86,4 +97,10 @@ bool bitmap_alloc_first_free(bitmap_t* this, uint32_t* bit){
     
     bitmap_set_bit(this, *bit);
     return true;
+}
+
+void bitmap_destroy(bitmap_t* this){
+    if(this->alloc_array == true){
+        kfree(this->bitarray);
+    }
 }
