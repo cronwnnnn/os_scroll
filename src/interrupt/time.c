@@ -2,8 +2,14 @@
 #include "interrupt/interrupt.h"
 #include "common/io.h"
 #include "monitor/monitor.h"
+#include "task/thread.h"
+#include "task/scheduler.h"
+
 
 uint32_t tick = 0;
+
+extern void context_switch(tcb_t* old_thread, tcb_t* new_thread);
+
 
 uint32_t getTick() {
   return tick;
@@ -16,6 +22,17 @@ static void timer_callback(isr_params_t regs){
         monitor_printf("seconds: %d \n", tick / TIMER_FREQUENCY);
     }*/
     tick++;
+
+    if(multi_task_is_enabled()){
+        tcb_t* crt_thread = get_crt_thread();
+        crt_thread->ticks++;
+        // Current thread has run out of time slice.
+        if (crt_thread->ticks >= crt_thread->priority) {
+            crt_thread->need_reschedule = true;
+        }
+    }
+
+
 
 }
 

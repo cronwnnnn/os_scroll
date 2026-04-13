@@ -80,6 +80,7 @@ DEFINE_ISR_NO_ERRCODE   47
 
 
 [EXTERN isr_handler]
+[EXTERN schedule]
 isr_common_stub:
     ; save common registers
     pusha
@@ -98,6 +99,9 @@ isr_common_stub:
     call isr_handler
 
 interrupt_exit:
+    ; 开始调度
+    call schedule
+
     pop eax
     mov ds, ax
     mov es, ax

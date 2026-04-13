@@ -6,8 +6,11 @@
 #include "common/types.h"
 #include "common/secure.h"
 #include "mem/kheap.h" 
+#include "task/thread.h"
+#include "task/scheduler.h"
 
 void run_all_heap_tests();
+
 
 
 int main(){
@@ -21,14 +24,17 @@ int main(){
     init_timer(TIMER_FREQUENCY);
     monitor_print("IDT and timer initialized successfully.\n");
     init_page();
+    monitor_print("page stage1 initialized successfully.\n");
     init_kheap();
-    monitor_print("successfully init kheap");
+    init_page_stage2();
+    monitor_print("successfully init kheap\n");
     
     //run_all_heap_tests();
+    init_task_manager();
+    init_scheduler();
 
 
-
-    while(1){}
+    Panic("main function cloudn't be here");
 }
 
 // 引入你的 monitor_printf 和 panic 等库
