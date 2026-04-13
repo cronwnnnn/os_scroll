@@ -1,6 +1,7 @@
 #include "common/io.h"
 #include "common/types.h"
 #include "monitor/monitor.h"
+#include "sync/yieldlock.h"
 
 // 由于有scroll 因此不用做溢出检测，超过屏幕会自动滚动(即删除第一行的内容)
 
@@ -22,7 +23,14 @@ uint16_t defult_color = (COLOR_BLACK << 4) | (COLOR_WHITE & 0x0F);
 static int16_t cursor_x ;
 static int16_t cursor_y ;
 
+static yieldlock_t monitor_lock;
+
+void monitor_init(){
+    yieldlock_init(&monitor_lock);
+}
+
 static void mov_cursor(){
+
     uint16_t pos = cursor_y * VGA_WIDTH + cursor_x;
 
     //cursor的位置占16bit
@@ -33,6 +41,7 @@ static void mov_cursor(){
     //15为cursor位置的低8位
     outb(0x3D4, 15);
     outb(0x3D5, pos);
+
 }
 
 static int16_t get_cursor_offset(){
@@ -41,7 +50,9 @@ static int16_t get_cursor_offset(){
 }
 
 void monitor_print(const char* str){
+    yieldlock_lock(&monitor_lock);
     monitor_write_str(str);
+    yieldlock_unlock(&monitor_lock);
 }
 
 void monitor_print_char(char c){
@@ -94,6 +105,8 @@ void scroll_screen(){
 }
 
 void monitor_clear(){
+    yieldlock_lock(&monitor_lock);
+
     const uint16_t blank = (defult_color << 8) | ' ';
     int16_t i;
     for(i = 0; i < VGA_WIDTH * VGA_HEIGHT; i++){
@@ -102,6 +115,7 @@ void monitor_clear(){
     cursor_x = 0;
     cursor_y = 0;
     mov_cursor();
+    yieldlock_unlock(&monitor_lock);
 }
 
 void monitor_printf(const char *format, ...){
@@ -190,6 +204,7 @@ void monitor_write_hex(uint32_t num){
 }
 
 void monitor_printf_args(const char *format, char *arg_ptr){
+    yieldlock_lock(&monitor_lock);
     int32_t i = 0;
     while(format[i] != 0){
         if(format[i] == '%'){
@@ -240,4 +255,5 @@ void monitor_printf_args(const char *format, char *arg_ptr){
         i++;
     }
 
+    yieldlock_unlock(&monitor_lock);
 }

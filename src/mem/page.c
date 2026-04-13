@@ -6,6 +6,7 @@
 #include "common/secure.h"
 #include "common/stdlib.h"
 #include "utils/utils.h"
+#include "sync/yieldlock.h"
 
 void map_page(uint32_t vaddr);
 void map_page_with_frame(uint32_t vaddr, int32_t frame);
@@ -14,9 +15,14 @@ void release_pages(uint32_t vaddr, size_t page_count, bool frame_free);
 void release_phy_frame(uint32_t frame);
 
 static uint32_t bitarray[PHYSICAL_MEM_SIZE / PAGE_SIZE / 32];
-static page_directory_t kernel_page_directory;
 static bitmap_t phy_frames_map;
+static yieldlock_t phy_frames_map_lock;
+
 page_directory_t* current_page_directory = 0;
+static page_directory_t kernel_page_directory;
+
+static yieldlock_t page_dir_lock;
+
 
 void reload_page_dir(page_directory_t *dir){
     //刷新cr3 页目录，让其重新读取页目录的新增内容
@@ -35,7 +41,7 @@ static void pagefault_handler(isr_params_t regs) {
     */
     // 最开始的4kbframe 不允许访问和存储，防止NULL指针访问以及偏移访问
     if (faulting_address < 0x1000) { 
-        Panic("Segmentation Fault! Null pointer dereference or invalid memory access.");
+        Panic("Segmentation Fault! Null pointer dereference at 0x%x\n", faulting_address);
     }
 
     if(!present){
@@ -49,6 +55,9 @@ static void pagefault_handler(isr_params_t regs) {
 }
 
 void init_page() {
+    // 必须提前初始化锁，因为下面的 release_pages 会用到
+    yieldlock_init(&phy_frames_map_lock);
+    yieldlock_init(&page_dir_lock);
 
     phy_frames_map = bitmap_create(bitarray, PHYSICAL_MEM_SIZE / PAGE_SIZE);
     
@@ -74,12 +83,19 @@ void init_page() {
     register_interrupt_handler(14, &pagefault_handler);
 }
 
+void init_page_stage2(){
+    // phy_frames_map_lock 已经提前在 init_page 中初始化过了
+}
+
 static void release_page(uint32_t vaddr, bool frame_free){
     // frame_free表示是否要把物理内存也释放掉，还是只是解除映射
+    yieldlock_lock(&page_dir_lock);
+    
     uint32_t pte_index = vaddr >> 12;
     pte_t* pt = (pte_t*)PAGE_TABLES_VIRTUAL;
     pte_t* pte = pt + pte_index;
     if(!pte->present){
+        yieldlock_unlock(&page_dir_lock);
         return;
     }
     if(frame_free){
@@ -88,6 +104,7 @@ static void release_page(uint32_t vaddr, bool frame_free){
     *((uint32_t*)pte) = 0; //清除pte
     reload_page_dir(current_page_directory); //刷新页目录
 
+    yieldlock_unlock(&page_dir_lock);
 }
 
 void release_pages(uint32_t vaddr, size_t page_count, bool frame_free){
@@ -116,14 +133,20 @@ void release_pages(uint32_t vaddr, size_t page_count, bool frame_free){
 int32_t alloc_phy_frame(){
     //使用int 为了返回错误码-1
     // 注意返回的是第几个frame，不是地址，要*4kb才是物理地址
+    yieldlock_lock(&phy_frames_map_lock);
     uint32_t frame = 0;
-    if(!bitmap_alloc_first_free(&phy_frames_map, &frame))
+    if(!bitmap_alloc_first_free(&phy_frames_map, &frame)){
+        yieldlock_unlock(&phy_frames_map_lock);
         return -1;
+    }
+    yieldlock_unlock(&phy_frames_map_lock);
     return (int32_t)frame;
 }
 
 void release_phy_frame(uint32_t frame){
+    yieldlock_lock(&phy_frames_map_lock);
     bitmap_clear_bit(&phy_frames_map, frame);
+    yieldlock_unlock(&phy_frames_map_lock);
 }
 
 // clear是清零，release 才是释放
@@ -141,7 +164,9 @@ void map_page(uint32_t vaddr){
 
 void map_page_with_frame(uint32_t vaddr, int32_t frame){
     // 可指定分配到哪个物理地址中
+    yieldlock_lock(&page_dir_lock);
     map_page_with_frame_impl(vaddr, frame);
+    yieldlock_unlock(&page_dir_lock);
 }
 
 void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){

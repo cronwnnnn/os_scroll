@@ -3,8 +3,10 @@
 #include "utils/ordered_array.h"
 #include "common/secure.h"
 #include "monitor/monitor.h"
+#include "sync/yieldlock.h"
 
 static kheap_t kheap;
+static yieldlock_t kheap_lock;
 
 #define BLOCK_HEADER_SIZE sizeof(kheap_block_header_t)
 #define BLOCK_FOOTER_SIZE sizeof(kheap_block_footer_t)
@@ -29,6 +31,7 @@ static int32_t kheap_block_comparator(type_t a, type_t b){
 }
 
 void init_kheap(){
+    yieldlock_init(&kheap_lock);
     kheap = create_kheap(KHEAP_START, KHEAP_START + KHEAP_MIN_SIZE, KHEAP_MAX, 0, 0);
 }
 
@@ -240,19 +243,25 @@ void* kmalloc_impl(size_t size, uint8_t align){
 }
 
 void* kmalloc(size_t size){
+    yieldlock_lock(&kheap_lock);
     void* ptr = kmalloc_impl(size, 0);
+    yieldlock_unlock(&kheap_lock);
     return ptr;
 }
 
 void* kmalloc_align(size_t size){
+    yieldlock_lock(&kheap_lock);
     void* ptr = kmalloc_impl(size, 1);
+    yieldlock_unlock(&kheap_lock);
     return ptr;
 }
 
 void kfree(void* ptr) {
-  if (ptr == NULL) {
-    return;
-  }
-  free(&kheap, ptr);
+    if (ptr == NULL) {
+        return;
+    }
+    yieldlock_lock(&kheap_lock);
+    free(&kheap, ptr);
+    yieldlock_unlock(&kheap_lock);
 }
 
