@@ -14,7 +14,7 @@ void memcpy(void* dest, const void* src, size_t len){
         *((uint8_t*)dest + i) = *((uint8_t*)src + i);
 }
 
-int32_t strcpy(char* dest, const char* src){
+int32_t strcpy_with_len(char* dest, const char* src){
     Assert(dest != NULL && src != NULL);
 
     int32_t i = 0;
@@ -76,7 +76,7 @@ int32_t int2str(char* dst, int32_t num) {
         unum = unum / 10;
     }
 
-    strcpy(dst + start, buf + i + 1);
+    strcpy_with_len(dst + start, buf + i + 1);
     // 返回字符串长度
     return start + 18 - i;
 }
@@ -99,7 +99,7 @@ int32_t uint2str(char* dst, uint32_t num) {
         num = num / 10;
     }
 
-    strcpy(dst + start, buf + i + 1);
+    strcpy_with_len(dst + start, buf + i + 1);
     // 返回字符串长度
     return start + 18 - i;
 }
@@ -129,7 +129,7 @@ int32_t int2hex(char* dst, uint32_t num) {
         num = num / 16;
     }
 
-    strcpy(dst + start, buf + i + 1);
+    strcpy_with_len(dst + start, buf + i + 1);
     return start + 18 - i;
 }
 
@@ -153,19 +153,19 @@ void sprintf(char* dst, const char* format, ...){
                 int32_t num = *((int32_t*)arg);
                 arg += 4;
                 int2str(buf, num);
-                write_index += strcpy(dst + write_index, buf);
+                write_index += strcpy_with_len(dst + write_index, buf);
             }
             else if(format[i] == 'u'){
                 uint32_t unum = *((uint32_t*)arg);
                 arg += 4;
                 uint2str(buf, unum);
-                write_index += strcpy(dst + write_index, buf);
+                write_index += strcpy_with_len(dst + write_index, buf);
             }
             else if(format[i] == 'x' || format[i] == 'X'){
                 uint32_t hexnum = *((uint32_t*)arg);
                 arg += 4;
                 int2hex(buf, hexnum);
-                write_index += strcpy(dst + write_index, buf);
+                write_index += strcpy_with_len(dst + write_index, buf);
             }
             else if(format[i] == 's'){
                 // arg是一个指向指针的指针，他作为指针指向了栈中字符串的指针，因此声明为char**，
@@ -175,7 +175,7 @@ void sprintf(char* dst, const char* format, ...){
                 if(str == NULL){
                     str = "(null)";
                 }
-                write_index += strcpy(dst + write_index, str);
+                write_index += strcpy_with_len(dst + write_index, str);
             }
             else if(format[i] == 'c'){
                 char c = *((char*)arg);
