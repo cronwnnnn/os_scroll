@@ -3,6 +3,8 @@
 [GLOBAL switch_to_user_mode]
 [GLOBAL resume_thread]
 
+[EXTERN interrupt_exit]
+
 cpu_idle:
     hlt
     ret
@@ -36,3 +38,8 @@ resume_thread:
     
     sti
     ret
+
+
+switch_to_user_mode:
+    add esp, 8
+    jmp interrupt_exit

@@ -9,6 +9,7 @@
 #include "sync/yieldlock.h"
 #include "mem/kheap.h"
 #include "sync/cond_var.h"
+#include "mem/gdt.h"
 
 
 extern void context_switch(tcb_t* old_thread, tcb_t* new_thread);
@@ -183,6 +184,11 @@ void do_context_switch(){
     thread_node_t* next_thread_node = ready_tasks.head;
     tcb_t* next_thread = (tcb_t*)(next_thread_node->ptr);
     
+    // 在每次切换线程时都更改tss
+    // 由于tss只用于用户线程，而对于用户来说唯一要用到内核栈的时候就是中断
+    // 而每次中断结束之后用户线程的内核栈都变成空的了，因此esp指向最高处即可，即每次调用都是空的
+    update_tss_esp(next_thread->kernel_stack + KERNEL_STACK_SIZE);
+
     //如果下一个是空闲线程，就设为0，表示不在队列中，保证队列中最多一个空闲线程
     // 防止每个线程退出都送一个空闲线程进入队列
     next_thread->status = TASK_RUNNING;

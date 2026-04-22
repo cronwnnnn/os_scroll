@@ -36,11 +36,11 @@ tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t pr
 
 
     if(name != NULL){
-        strcpy(thread->name, name);
+        strcpy_with_len(thread->name, name);
     }else{
         char buf[32];
         sprintf(buf, "thread-%u", thread->id);
-        strcpy(thread->name, buf);
+        strcpy_with_len(thread->name, buf);
     }
 
     thread->status = TASK_READY;
@@ -75,6 +75,7 @@ tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t pr
     ss->function = function;
 
     if(is_user_thread){
+        ss->thread_entry_eip = (uint32_t)switch_to_user_mode;
         interrupt_stack_t* interrupt_stack = (interrupt_stack_t*)((uint32_t)thread->kernel_esp + sizeof(switch_stack_t));
         // data segemnts
         interrupt_stack->ds = SELECTOR_U_DATA;
@@ -108,3 +109,56 @@ void destroy_thread(tcb_t* thread){
     kfree((void*)thread->kernel_stack);
     kfree(thread);
 }
+
+uint32_t prepare_user_stack(
+    tcb_t* thread, uint32_t stack_top, uint32_t argc, char** argv, uint32_t return_addr){
+        uint32_t total_argv_length = 0;
+
+        for(int32_t i = 0; i < argc; i++){
+            total_argv_length += strlen(argv[i]) + 1;
+        }
+        // thread->name的地址也在内核中，也需要拷贝下来
+        total_argv_length += strlen(thread->name) + 1;
+
+        // 用于存储参数字符串
+        stack_top -= total_argv_length;
+        stack_top = stack_top / 4 * 4;
+
+        // 注意这里的args的类型是char**, 是指向char*的数组
+        char* args[argc+1];
+        char* args_stack_addr = (char*)stack_top;
+
+        int32_t len = strcpy_with_len(args_stack_addr, thread->name);
+        args[0] = args_stack_addr;
+        args_stack_addr += (len+1);
+
+        // 现在将内核高地址处的字符串参数拷贝到用户栈中
+        // 这样在访问时不会造成越权 
+        for(int32_t i = 0; i < argc; i++){
+            // 先将字符串拷贝到用户栈中，然后args指向该地址
+            int32_t len = strcpy_with_len(args_stack_addr, argv[i]);
+            args[i+1] = args_stack_addr;
+            args_stack_addr += (len+1);
+        }
+
+
+        stack_top -= (argc+1) * 4;
+        uint32_t argv_start = stack_top;
+        for(int32_t i = 0; i < argc + 1; i++){
+            *((char**)argv_start + i) = args[i];
+        }
+
+        // 写入指向指针的指针，argc以及返回地址
+        stack_top -= 4;
+        *((uint32_t*)stack_top) = argv_start;
+        stack_top -= 4;
+        *((uint32_t*)stack_top) = argc + 1;
+
+        stack_top -= 4;
+        *((uint32_t*)stack_top) = return_addr;
+
+        interrupt_stack_t* interrupt_stack = (interrupt_stack_t*)((uint32_t)thread->kernel_esp + sizeof(switch_stack_t));
+        interrupt_stack->user_esp = stack_top;
+        return stack_top;
+
+    }

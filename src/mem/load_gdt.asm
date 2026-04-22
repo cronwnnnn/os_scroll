@@ -1,4 +1,6 @@
 [GLOBAL load_gdt]
+[GLOBAL refresh_tss]
+
 load_gdt:
     mov eax, [esp + 4]
     lgdt[eax]
@@ -16,3 +18,8 @@ load_gdt:
     jmp 0x08:.flush     ;set code segment
 .flush:
     ret
+
+refresh_tss:
+  mov ax, 0x30
+  ltr ax
+  ret
