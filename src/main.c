@@ -8,6 +8,8 @@
 #include "mem/kheap.h" 
 #include "task/thread.h"
 #include "task/scheduler.h"
+#include "task/process.h"
+#include "interrupt/protect_fault.h"
 
 void run_all_heap_tests();
 
@@ -22,15 +24,16 @@ int main(){
     monitor_printf("i am a kernel, my address is %d\n", 1111);
     init_idt();
     init_timer(TIMER_FREQUENCY);
+    init_protect_fault();
     monitor_print("IDT and timer initialized successfully.\n");
     init_page();
     monitor_print("page stage1 initialized successfully.\n");
     init_kheap();
-    init_page_stage2();
     monitor_print("successfully init kheap\n");
     
     //run_all_heap_tests();
     init_task_manager();
+    init_process_manager();
     init_scheduler();
 
 
