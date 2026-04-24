@@ -3,6 +3,7 @@
 #include "common/types.h"
 #include "interrupt/interrupt.h"
 #include "utils/linked_list.h"
+#include "task/process.h"
 
 typedef void thread_func();
 
@@ -46,6 +47,7 @@ struct task_control_block{
 
     // need reschedule flag
     bool need_reschedule;
+    pcb_t* process;
 
     int32_t preempt_count;
 
@@ -77,6 +79,8 @@ typedef struct switch_stack switch_stack_t;
 tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t priority, uint8_t is_user_thread);
 void destroy_thread(tcb_t* thread);
 void init_task_manager();
+uint32_t prepare_user_stack(
+    tcb_t* thread, uint32_t stack_top, uint32_t argc, char** argv, uint32_t return_addr);
 
 
 

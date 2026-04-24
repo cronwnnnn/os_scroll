@@ -35,6 +35,10 @@
 
 #define KERNEL_BIN_LOAD_SIZE          (1024 * 1024)
 
+#define COPIED_PAGE_DIR_VADDR         0xFFFFD000
+#define COPIED_PAGE_TABLE_VADDR       0xFFFFE000
+#define COPIED_PAGE_VADDR             0xFFFFF000
+
 
 typedef struct page_table_entry {
   uint32_t present    : 1;   // 页面是否在内存中
@@ -52,6 +56,7 @@ typedef pte_t pde_t;
 typedef struct page_directory{
     uint32_t page_directory_entries;
 }page_directory_t;
+
 
 
 void init_page();

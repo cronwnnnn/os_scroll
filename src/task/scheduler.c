@@ -26,17 +26,20 @@ thread_node_t* get_crt_thread_node();
 tcb_t* get_crt_thread();
 
 
+static pcb_t* main_process;
 
 static thread_node_t* crt_thread_node = NULL;
 static thread_node_t* main_thread_node;
 static thread_node_t* kernel_clean_node;
 
-
+static hash_table_t processes_map;
+static yieldlock_t processes_map_lock;
 static hash_table_t threads_map;
 static yieldlock_t threads_map_lock;
 
 static linked_list_t ready_tasks;
 static linked_list_t dead_tasks;
+static linked_list_t dead_processes;
 static yieldlock_t dead_resource_lock;
 static cond_var_t dead_cv;
 
@@ -56,12 +59,16 @@ void init_scheduler(){
     linked_list_init(&ready_tasks);
 
     linked_list_init(&dead_tasks);
+    linked_list_init(&dead_processes);
     yieldlock_init(&dead_resource_lock);
     cond_var_init(&dead_cv);
 
+    hash_table_init(&processes_map);
+    yieldlock_init(&processes_map_lock);
     yieldlock_init(&threads_map_lock);
     hash_table_init(&threads_map);
 
+    main_process = create_process("kernel_main_process", true);
     tcb_t* main_thread = init_thread(NULL, "main_thread", kernel_main_thread, THREAD_DEFAULT_PRIORITY, false);
     main_thread_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
     main_thread_node->ptr = main_thread;
@@ -195,6 +202,10 @@ void do_context_switch(){
     if(next_thread_node == main_thread_node){
         main_thread_in_ready_queue = 0;
     }
+
+    if(next_thread->process != old_thread->process){
+        process_switch(next_thread->process);
+    }
     
     // 把下一个任务的 node 从从队列中拿出来
     linked_list_remove(&ready_tasks, next_thread_node);  
@@ -232,6 +243,10 @@ void schedule(){
     }
 }
 
+void process_switch(pcb_t* process) {
+    // 将当前cr3指向要转换的进程的页表并刷新tlb
+    reload_page_directory(&process->page_dir);
+}
 
 void add_thread_to_schedule(tcb_t* thread){
     thread_node_t* thread_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
@@ -291,7 +306,7 @@ void schedule_mark_thread_block() {
 
 
 static bool has_dead_resource() {
-  return  dead_tasks.size > 0;
+  return  dead_processes.size > 0 || dead_tasks.size > 0;
 }
 
 tcb_t* get_crt_thread(){
