@@ -34,7 +34,7 @@ static void write_tss(uint32_t num, uint16_t ss0, uint32_t esp0){
     tss_entry.ss = tss_entry.ds = tss_entry.es = tss_entry.fs = tss_entry.gs = SELECTOR_K_DATA | RPL3;
 
     uint32_t base = (uint32_t)&tss_entry;
-    uint32_t limit = base + sizeof(tss_entry);
+    uint32_t limit = sizeof(tss_entry_t) - 1;;
     gdt_set_gate(num, base, limit, DESC_P | DESC_DPL_0 | DESC_S_SYS | DESC_TYPE_TSS, 0x0);
 }
 

@@ -63,5 +63,7 @@ struct process_struct {
 };
 typedef struct process_struct pcb_t;
 
+void init_process_manager();
+
 
 #endif

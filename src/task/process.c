@@ -2,10 +2,14 @@
 #include "task/thread.h"
 #include "utils/id_pool.h"
 #include "mem/kheap.h"
+#include "mem/page.h"
 #include "common/stdlib.h"
 #include "common/secure.h"
+#include "task/scheduler.h"
 
 static id_pool_t process_id_pool;
+
+void add_process_thread(pcb_t* process, tcb_t* new_thread);
 
 void init_process_manager(){
     id_pool_init(&process_id_pool, PROCESS_NUM, MAX_PROCESS_NUM);
@@ -88,7 +92,7 @@ tcb_t* create_new_user_thread(
     // 为用户栈直接分配物理地址
     map_page((uint32_t)new_thread->user_stack - PAGE_SIZE);
 
-    prepare_user_stack(new_thread, user_stack_top, argc, argv, (uint32_t)schedule_thread_exit_normal);
+    prepare_user_stack(new_thread, user_stack_top, argc, argv, (uint32_t)schedule_thread_normal_exit);
 
     return new_thread;
 }

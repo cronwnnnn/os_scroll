@@ -39,7 +39,7 @@
 #define SELECTOR_U_CODE   ((4 << 3) + (TI_GDT << 2) + RPL3)
 #define SELECTOR_U_DATA   ((5 << 3) + (TI_GDT << 2) + RPL3)
 
-#define GDT_ENTRIES 6
+#define GDT_ENTRIES 7
 
 // ****************************************************************************
 

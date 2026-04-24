@@ -60,7 +60,8 @@ typedef struct page_directory{
 
 
 void init_page();
-void init_page_stage2();
 void map_page(uint32_t vaddr);
+page_directory_t clone_crt_page_dir();
+void reload_page_dir(page_directory_t *dir);
 
 #endif // INTERRUPT_PAGE_H

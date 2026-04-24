@@ -25,6 +25,9 @@ void add_thread_to_schedule(tcb_t* thread);
 void add_thread_node_to_schedule(thread_node_t* thread_node);
 void add_thread_node_to_schedule_head(thread_node_t* thread_node);
 
+void schedule_thread_normal_exit();
+void add_new_process(pcb_t* process);
+
 bool multi_task_is_enabled();
 
 #endif

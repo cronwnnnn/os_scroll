@@ -106,3 +106,20 @@ static void hash_table_expand(hash_table_t* this) {
   this->buckets = new_buckets;
   this->buckets_num = new_buckets_num;
 }
+
+void* hash_table_remove(hash_table_t* this, uint32_t key) {
+  linked_list_t* bucket = &this->buckets[key % this->buckets_num];
+  linked_list_node_t* kv_node = hash_table_bucket_lookup(this, bucket, key);
+  if (kv_node != nullptr) {
+    linked_list_remove(bucket, kv_node);
+    hash_table_kv_t* kv = (hash_table_kv_t*)kv_node->ptr;
+    void* value = kv->v_ptr;
+    kfree(kv);
+    kfree(kv_node);
+    this->size--;
+
+    // TODO: shrink buckets if needed?
+    return value;
+  }
+  return nullptr;
+}

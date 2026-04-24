@@ -10,6 +10,7 @@
 #include "mem/kheap.h"
 #include "sync/cond_var.h"
 #include "mem/gdt.h"
+#include "mem/page.h"
 
 
 extern void context_switch(tcb_t* old_thread, tcb_t* new_thread);
@@ -19,6 +20,7 @@ void do_context_switch();
 static void kernel_main_thread();
 static void kernel_clean_thread();
 static bool has_dead_resource();
+void process_switch(pcb_t* process);
 
 
 
@@ -26,7 +28,7 @@ thread_node_t* get_crt_thread_node();
 tcb_t* get_crt_thread();
 
 
-static pcb_t* main_process;
+//static pcb_t* main_process;
 
 static thread_node_t* crt_thread_node = NULL;
 static thread_node_t* main_thread_node;
@@ -68,7 +70,7 @@ void init_scheduler(){
     yieldlock_init(&threads_map_lock);
     hash_table_init(&threads_map);
 
-    main_process = create_process("kernel_main_process", true);
+    //main_process = create_process("kernel_main_process", true);
     tcb_t* main_thread = init_thread(NULL, "main_thread", kernel_main_thread, THREAD_DEFAULT_PRIORITY, false);
     main_thread_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
     main_thread_node->ptr = main_thread;
@@ -104,6 +106,17 @@ void test_thread2(){
     }
 }
 
+void user_mode_test_program() {
+    // 此时我们期望自己已经身处 Ring 3 
+    // 不能调用 monitor_print! 否则会触发 Page Fault (缺页/权限越界)
+    
+    // 故意执行一条只有 Ring 0 才能执行的特权指令：关闭中断
+    asm volatile ("cli"); 
+
+    // 如果能走到这里，说明在 Ring 0，测试失败。
+    while(1);
+}
+
 /*
 void scheduler_thread(){
     first_thread = init_thread(NULL, "test1", test_thread, THREAD_DEFAULT_PRIORITY, false);
@@ -122,6 +135,18 @@ static void kernel_main_thread(){
     tcb_t* second_t = init_thread(NULL, "test2", test_thread2, THREAD_DEFAULT_PRIORITY, false);
     add_thread_to_schedule(first_t);
     add_thread_to_schedule(second_t);
+
+    tcb_t* user_t = init_thread(NULL, "user_test", user_mode_test_program, THREAD_DEFAULT_PRIORITY, true);
+    uint32_t fake_user_stack = (uint32_t)kmalloc_align(PAGE_SIZE);
+    map_page(fake_user_stack);
+    
+    // 伪造一点参数压栈
+    char* argv[] = {"test_prog"};
+    prepare_user_stack(user_t, fake_user_stack + PAGE_SIZE, 1, argv, 0);
+
+    // 把这个用户线程加入调度队列
+    add_thread_to_schedule(user_t);
+
 
     enable_interrupt();
     multi_task_enabled = true;
@@ -245,7 +270,7 @@ void schedule(){
 
 void process_switch(pcb_t* process) {
     // 将当前cr3指向要转换的进程的页表并刷新tlb
-    reload_page_directory(&process->page_dir);
+    reload_page_dir(&process->page_dir);
 }
 
 void add_thread_to_schedule(tcb_t* thread){
@@ -299,6 +324,10 @@ void schedule_thread_exit(){
     do_context_switch();
 }
 
+void schedule_thread_normal_exit(){
+    Panic("should not be here!!! in normal exit");
+}
+
 void schedule_mark_thread_block() {
   tcb_t* thread = (tcb_t*)crt_thread_node->ptr;
   thread->status = TASK_WAITING;
@@ -319,4 +348,11 @@ thread_node_t* get_crt_thread_node(){
     Assert(crt_thread_node != NULL);
     return crt_thread_node;
 }
+
+void add_new_process(pcb_t* process) {
+  yieldlock_lock(&processes_map_lock);
+  hash_table_put(&processes_map, process->id, process);
+  yieldlock_unlock(&processes_map_lock);
+}
+
 

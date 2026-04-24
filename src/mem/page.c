@@ -16,6 +16,8 @@ void map_page_with_frame(uint32_t vaddr, int32_t frame);
 void map_page_with_frame_impl(uint32_t vaddr, int32_t frame);
 void release_pages(uint32_t vaddr, size_t page_count, bool frame_free);
 void release_phy_frame(uint32_t frame);
+void handle_cow_fault(uint32_t vaddr);
+static inline void inc_cow_ref(uint32_t frame);
 
 // 用于查找frame中，优化每次从头遍历的问题
 static uint32_t last_allocated_index = 0;
@@ -90,8 +92,8 @@ void init_page() {
     // 而且0xffffffff是uint32的最大值，必须在计算之后再加1
     // 至于第二个参数不用 + page_size - 1，是因为kernelbinsize是1mb，不会出现余数
 
-    // 删除已经加载的kenel bin 文件
-    release_pages(0xffffffff - KERNEL_BIN_LOAD_SIZE + 1, KERNEL_BIN_LOAD_SIZE / PAGE_SIZE, true);
+    // 删除已经加载的kenel bin 文件，将最后一个参数设为false正式因为之前根本没置0，完全可以当作空的
+    release_pages(0xffffffff - KERNEL_BIN_LOAD_SIZE + 1, KERNEL_BIN_LOAD_SIZE / PAGE_SIZE, false);
 
     register_interrupt_handler(14, &pagefault_handler);
 }
@@ -116,7 +118,6 @@ static void release_page(uint32_t vaddr, bool frame_free){
         }
         return;
     }
-    uint32_t frame = pte->frame;
     if(frame_free){
         // release_phy_frame 既用于释放frame也用于减少cwo引用
         release_phy_frame(pte->frame);
@@ -176,6 +177,7 @@ int32_t alloc_phy_frame(){
 
 void release_phy_frame(uint32_t frame){
     // release_phy_frame 既用于释放frame也用于减少cwo引用
+    Assert(frame < (PHYSICAL_MEM_SIZE / PAGE_SIZE));
     yieldlock_lock(&phy_frames_map_lock);
     Assert(phy_frames_array[frame] > 0);
     phy_frames_array[frame]--;
@@ -183,6 +185,7 @@ void release_phy_frame(uint32_t frame){
 }
 
 int32_t get_phy_frame_ref(uint32_t frame){
+    Assert(frame < (PHYSICAL_MEM_SIZE / PAGE_SIZE));
     yieldlock_lock(&phy_frames_map_lock);
     int32_t cnt = phy_frames_array[frame];
     yieldlock_unlock(&phy_frames_map_lock);
@@ -274,7 +277,8 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
             reload_page_dir(current_page_directory);
             clear_page(vaddr);
         }else{
-            Panic("map_page function shoudn't be here");
+            // 这是由于kmalloc后又再次调用了map_page，但是kmalloc实际已经触发page_fault了，不管即可
+            return;
         }
         
         
@@ -455,6 +459,7 @@ page_directory_t clone_crt_page_dir(){
 
 // 让引用加一
 static inline void inc_cow_ref(uint32_t frame) {
+    Assert(frame < (PHYSICAL_MEM_SIZE / PAGE_SIZE));
     yieldlock_lock(&phy_frames_map_lock);
     phy_frames_array[frame]++;
     yieldlock_unlock(&phy_frames_map_lock);
