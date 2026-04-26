@@ -13,6 +13,7 @@ void enable_interrupt();
 void disable_interrupt();
 bool is_in_irq_context();
 extern void reload_idt(uint32_t);
+extern void syscall_entry();
 
 
 // entries 是每个表项的值，cpu根据信号去找响应entry并访问地址中的汇编处理函数
@@ -85,6 +86,8 @@ void init_idt(){
     set_idt_gate(47, (uint32_t)isr47, SELECTOR_K_CODE, IDT_GATE_ATTR_DPL3);
 
     // soft int
+    // 在int0x80之后跳转至syscall_entry函数处理，而非isr这种，因为要对某些寄存器特殊处理
+    set_idt_gate(SYSCALL_INT_NUM, (uint32_t)syscall_entry, SELECTOR_K_CODE, IDT_GATE_ATTR_DPL3);
 
     // refresh idt,加载idt
     reload_idt((uint32_t)&idt_ptr);
