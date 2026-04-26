@@ -10,10 +10,12 @@
 static id_pool_t process_id_pool;
 
 void add_process_thread(pcb_t* process, tcb_t* new_thread);
+void add_child_process(pcb_t* parent, pcb_t* child);
 
 void init_process_manager(){
     id_pool_init(&process_id_pool, PROCESS_NUM, MAX_PROCESS_NUM);
 }
+
 
 pcb_t* create_process(char* name, uint8_t is_kernel_process){
     pcb_t* process = (pcb_t*)kmalloc(sizeof(pcb_t));
@@ -58,11 +60,35 @@ pcb_t* create_process(char* name, uint8_t is_kernel_process){
 
     yieldlock_init(&process->lock);
 
-    add_new_process(process);
     return process;
 
+}
 
+pcb_t* create_and_add_process(char* name, uint8_t is_kernel_process){
+    pcb_t* process = create_process(name, is_kernel_process);
+    add_new_process(process);
 
+    return process;
+}
+
+int32_t process_fork(){
+    pcb_t* new_process = create_process(NULL, false);
+
+    pcb_t* parent_process = get_crt_process();
+    add_child_process(parent_process, new_process);
+    new_process->parent = parent_process;
+
+    tcb_t* new_thread = fork_crt_thread();
+    Assert(new_thread != NULL);
+
+    add_process_thread(new_process, new_thread);
+    add_new_process(new_process);
+    // 同时复制了上一个线程的所有内容，包括用户栈地址，因此在这个进程将该用户栈地址置为已占有，防止覆盖
+    bitmap_set_bit(&new_process->user_thread_stack_indexes, new_thread->user_stack_index);
+    add_thread_to_schedule(new_thread);
+
+    // 父进程返回子进程的id
+    return new_process->id;
 }
 
 
@@ -90,7 +116,7 @@ tcb_t* create_new_user_thread(
     uint32_t user_stack_top = USER_STACK_TOP - stack_index * USER_STACK_SIZE;
 
     // 为用户栈直接分配物理地址
-    map_page((uint32_t)new_thread->user_stack - PAGE_SIZE);
+    map_page(user_stack_top - PAGE_SIZE);
 
     prepare_user_stack(new_thread, user_stack_top, argc, argv, (uint32_t)schedule_thread_normal_exit);
 
@@ -113,4 +139,10 @@ void remove_process_thread(pcb_t* process, tcb_t* new_thread){
         bitmap_clear_bit(&process->user_thread_stack_indexes, new_thread->user_stack_index);
     }
     yieldlock_unlock(&process->lock);
+}
+
+void add_child_process(pcb_t* parent, pcb_t* child) {
+  yieldlock_lock(&parent->lock);
+  hash_table_put(&parent->children_processes, child->id, child);
+  yieldlock_unlock(&parent->lock);
 }

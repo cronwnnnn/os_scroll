@@ -3,7 +3,6 @@
 #include "common/types.h"
 #include "interrupt/interrupt.h"
 #include "utils/linked_list.h"
-#include "task/process.h"
 
 typedef void thread_func();
 
@@ -16,6 +15,8 @@ typedef void thread_func();
 #define EFLAGS_IOPL_0 (0 << 12)
 #define EFLAGS_IOPL_3 (3 << 12)
 
+struct  process_struct;
+typedef struct process_struct pcb_t;
 
 typedef isr_params_t interrupt_stack_t;
 typedef linked_list_node_t thread_node_t;
@@ -79,8 +80,8 @@ typedef struct switch_stack switch_stack_t;
 tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t priority, uint8_t is_user_thread);
 void destroy_thread(tcb_t* thread);
 void init_task_manager();
-uint32_t prepare_user_stack(
-    tcb_t* thread, uint32_t stack_top, uint32_t argc, char** argv, uint32_t return_addr);
+uint32_t prepare_user_stack(tcb_t* thread, uint32_t stack_top, uint32_t argc, char** argv, uint32_t return_addr);
+tcb_t* fork_crt_thread();
 
 
 

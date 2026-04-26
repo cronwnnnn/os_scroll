@@ -11,6 +11,10 @@
 #include "sync/cond_var.h"
 #include "mem/gdt.h"
 #include "mem/page.h"
+#include "task/process.h"
+
+#include "syscall/syscall.h"
+void user_mode_fork_test();
 
 
 extern void context_switch(tcb_t* old_thread, tcb_t* new_thread);
@@ -28,7 +32,7 @@ thread_node_t* get_crt_thread_node();
 tcb_t* get_crt_thread();
 
 
-//static pcb_t* main_process;
+static pcb_t* main_process;
 
 static thread_node_t* crt_thread_node = NULL;
 static thread_node_t* main_thread_node;
@@ -70,8 +74,9 @@ void init_scheduler(){
     yieldlock_init(&threads_map_lock);
     hash_table_init(&threads_map);
 
-    //main_process = create_process("kernel_main_process", true);
-    tcb_t* main_thread = init_thread(NULL, "main_thread", kernel_main_thread, THREAD_DEFAULT_PRIORITY, false);
+    main_process = create_and_add_process("kernel_main_process", true);
+    Assert(main_process != NULL);
+    tcb_t* main_thread = create_new_kernel_thread(main_process, "main_thread", kernel_main_thread);
     main_thread_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
     main_thread_node->ptr = main_thread;
     crt_thread_node = main_thread_node;
@@ -125,17 +130,18 @@ void scheduler_thread(){
 */
 
 static void kernel_main_thread(){
-    tcb_t* clean_thread = init_thread(NULL, "clean_thread", kernel_clean_thread, THREAD_DEFAULT_PRIORITY, false);
+    tcb_t* clean_thread = create_new_kernel_thread(main_process, "clean_thread", kernel_clean_thread);
     kernel_clean_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
     kernel_clean_node->ptr = clean_thread;
     add_thread_node_to_schedule(kernel_clean_node);
 
     // 追加测试线程，以便让它们能被真正执行到并打印
-    tcb_t* first_t = init_thread(NULL, "test1", test_thread, THREAD_DEFAULT_PRIORITY, false);
-    tcb_t* second_t = init_thread(NULL, "test2", test_thread2, THREAD_DEFAULT_PRIORITY, false);
-    add_thread_to_schedule(first_t);
-    add_thread_to_schedule(second_t);
+    //tcb_t* first_t = create_new_kernel_thread(main_process, "test1", test_thread);
+    //tcb_t* second_t = create_new_kernel_thread(main_process, "test2", test_thread2);
+    //add_thread_to_schedule(first_t);
+    //add_thread_to_schedule(second_t);
 
+    /*
     tcb_t* user_t = init_thread(NULL, "user_test", user_mode_test_program, THREAD_DEFAULT_PRIORITY, true);
     uint32_t fake_user_stack = (uint32_t)kmalloc_align(PAGE_SIZE);
     map_page(fake_user_stack);
@@ -146,7 +152,30 @@ static void kernel_main_thread(){
 
     // 把这个用户线程加入调度队列
     add_thread_to_schedule(user_t);
+    */
+    // 测试刚才完整的 Process 和 Thread 实现
+    
+    // ========================= create process test =========================
+    /*
+    pcb_t* test_proc = create_and_add_process("my_test_process", false); // 0 表示这是一个用户进程
+    char* proc_argv[] = {"proc_test_main"};
+    tcb_t* proc_thread = create_new_user_thread(test_proc, "proc_thread", user_mode_test_program, 1, proc_argv);
+    if(proc_thread != NULL){
+        add_thread_to_schedule(proc_thread);
+    } else {
+        monitor_print("Failed to create process user thread!\n");
+    }
+    */
 
+
+    // =========================  fork  test =========================
+    pcb_t* test_proc = create_and_add_process("fork_test_process", false); 
+    char* proc_argv[] = {"test_prog"};
+    tcb_t* proc_thread = create_new_user_thread(test_proc, "proc_thread", user_mode_fork_test, 1, proc_argv);
+    
+    if(proc_thread != NULL){
+        add_thread_to_schedule(proc_thread);
+    }
 
     enable_interrupt();
     multi_task_enabled = true;
@@ -349,6 +378,12 @@ thread_node_t* get_crt_thread_node(){
     return crt_thread_node;
 }
 
+pcb_t* get_crt_process(){
+    tcb_t* crt_thread = get_crt_thread();
+    Assert(crt_thread->process !=NULL);
+    return crt_thread->process;
+}
+
 void add_new_process(pcb_t* process) {
   yieldlock_lock(&processes_map_lock);
   hash_table_put(&processes_map, process->id, process);
@@ -356,3 +391,68 @@ void add_new_process(pcb_t* process) {
 }
 
 
+void dummy_delay() {
+    // 这里的数字需要足够大，确保在这个循环跑完期间，
+    // 时钟中断（比如你设置的是 10ms 触发一次）至少会发生一次或多次。
+    // 如果系统比较慢，可以把数字调小点；如果用的是比较快的虚拟机，可能要写到 10000000。
+    volatile int i = 50000000; 
+    while (i > 0) {
+        i--;
+    }
+}
+
+int global_var = 100;
+void user_mode_fork_test() {
+    syscall_print("===================\n");
+    syscall_print("User Mode Fork Test Start!\n");
+    
+    uint32_t* ptr = (uint32_t*)0xF2000000;
+    *ptr = 1;
+
+    int local_var = 10; 
+    
+    int32_t pid = syscall_fork();
+
+    if (pid < 0) {
+        syscall_print("Fork Failed!\n");
+        while(1);
+    } 
+    else if (pid == 0) {
+        // --- 子进程 ---
+        syscall_print("[Child] I am the child process.\n");
+        
+        local_var = 20;    
+        global_var = 200;  
+        
+        syscall_print("[Child] Modifying variables: local=20, global=200\n");
+        
+        // 刻意拖延时间，在这个期间，时钟中断肯定会发生，
+        // CPU 会被强行抢占，切换回父进程去检查变量是否被污染。
+        syscall_print("[Child] Delaying to force a preemption...\n");
+        dummy_delay(); 
+        
+        syscall_print("[Child] Execution finished.\n");
+        while (1) { dummy_delay(); } // 挂起
+    } 
+    else {
+        // --- 父进程 ---
+        syscall_print("[Parent] I am the parent. My child's PID is > 0.\n");
+        syscall_print("[Parent] Waiting for child to modify variables...\n");
+        
+        // 父进程这里不着急检查，先跑一个漫长的延时循环。
+        // 这期间必然会被时钟中断打断，切换到刚 fork 出来的子进程那里去。
+        // 等子进程修改完变量，并同样因为时钟中断被挂起后，又会切回到父进程继续走。
+        dummy_delay();
+        dummy_delay(); // 跑两次确保子进程已经改过变量了
+
+        // 验证内存隔离
+        if (local_var == 10 && global_var == 200) {
+            syscall_print("[Parent] Test PASS: Memory is isolated!\n");
+        } else {
+            syscall_print("[Parent] Test FAIL: Variables were overwritten by child!\n");
+        }
+        
+        syscall_print("[Parent] Execution finished.\n");
+        while (1) { dummy_delay(); } // 挂起
+    }
+}

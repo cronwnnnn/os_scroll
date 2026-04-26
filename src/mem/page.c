@@ -10,6 +10,7 @@
 #include "mem/kheap.h"
 #include "utils/hash_table.h"
 #include "task/scheduler.h"
+#include "task/process.h"
 
 void map_page(uint32_t vaddr);
 void map_page_with_frame(uint32_t vaddr, int32_t frame);
@@ -43,6 +44,7 @@ static void pagefault_handler(isr_params_t regs) {
     int32_t err_code = regs.error_code;
     int32_t present = err_code & 0x1;
     int32_t rw = err_code & 0x2;    // 是否是写入触发的异常
+    int32_t user_mode = err_code & 0x4; // 是否是因为越权访问发生的错误
 
     // 最开始的4kbframe 不允许访问和存储，防止NULL指针访问以及偏移访问
     if (faulting_address < 0x1000) { 
@@ -58,6 +60,12 @@ static void pagefault_handler(isr_params_t regs) {
     
     // 如果页面存在 (present == 1) 且是因为写入 (rw == 1) 导致的中断，这可能是 COW
     if (present && rw) {
+
+        if (user_mode && faulting_address >= 0xC0000000) {
+            monitor_printf("Protection Fault! User process trying to write Kernel memory at 0x%x\n", faulting_address);
+            Panic("System halted due to Privilege Violation.");
+        }
+
         // 这里稍后填入调用专门处理 COW 的函数
         handle_cow_fault(faulting_address);
         reload_page_dir(current_page_directory);
@@ -217,6 +225,8 @@ void map_page_with_frame(uint32_t vaddr, int32_t frame){
 }
 
 void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
+    // 设置访问权限
+    uint8_t is_user_page = (vaddr < 0xC0000000) ? 1 : 0;
     // 先查看当前页目录中要分配的页表是否存在，如果不在页目录中，则先为页表分配4kb内存
     uint32_t pd_index = vaddr >> 22;
     pde_t* pd = (pde_t*)PAGE_DIR_VIRTUAL;
@@ -234,7 +244,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
         }
         pde->present = 1;
         pde->rw = 1;
-        pde->user = 1;
+        pde->user = is_user_page;
         pde->frame = addr;
         
         // 分配完成之后刷新页目录使其能被查到,并清理页表处的物理地址，防止错误映射
@@ -253,7 +263,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
     if(frame > 0){
         Assert(pte->present == 0);
         pte->present = 1;
-        pte->user = 1;
+        pte->user = is_user_page;
         pte->rw = 1;
         pte->frame = frame;
         reload_page_dir(current_page_directory);
@@ -270,7 +280,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
             }
             pte->present = 1;
             pte->rw = 1;
-            pte->user = 1;
+            pte->user = is_user_page;
             pte->frame = frame;
             
             // 分配完成之后刷新页目录使其能被查到,并清理分配物理地址处的内存，防止访问到之前该物理地址的内容
@@ -372,7 +382,7 @@ page_directory_t clone_crt_page_dir(){
         if(i == 769){
             new_pde->present = 1;
             new_pde->rw = 1;
-            new_pde->user = 1;
+            new_pde->user = 0;
             new_pde->frame = new_pd_frame;
         }else{
             *new_pde = *(crt_pd + i);

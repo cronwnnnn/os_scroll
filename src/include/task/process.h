@@ -5,6 +5,7 @@
 #include "utils/bit_map.h"
 #include "sync/yieldlock.h"
 #include "mem/page.h"
+#include "task/thread.h"
 
 
 #define USER_STACK_TOP   0xBFC00000  // 0xC0000000 - 4MB
@@ -13,6 +14,9 @@
 
 #define PROCESS_NUM 1024
 #define MAX_PROCESS_NUM 16384
+
+struct task_control_block;
+typedef struct task_control_block tcb_t;
 
 
 enum process_status {
@@ -64,6 +68,9 @@ struct process_struct {
 typedef struct process_struct pcb_t;
 
 void init_process_manager();
-
+tcb_t* create_new_user_thread(pcb_t* process, char* name, void* user_function, uint32_t argc, char** argv);
+tcb_t* create_new_kernel_thread(pcb_t* process, char* name, void* function);
+pcb_t* create_and_add_process(char* name, uint8_t is_kernel_process);
+int32_t process_fork();
 
 #endif

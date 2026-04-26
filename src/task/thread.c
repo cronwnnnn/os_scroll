@@ -9,6 +9,7 @@
 #include "task/scheduler.h"
 
 extern void switch_to_user_mode();
+extern void syscall_fork_exit();
 
 
 static id_pool_t thread_id_pool;
@@ -162,3 +163,42 @@ uint32_t prepare_user_stack(
         return stack_top;
 
     }
+
+tcb_t* fork_crt_thread(){
+    tcb_t* crt_thread = get_crt_thread();
+    Assert(crt_thread != NULL);
+    tcb_t* new_thread = (tcb_t*)kmalloc(sizeof(tcb_t));
+    Assert(new_thread != NULL);
+
+    memcpy((void*)new_thread, (void*)crt_thread, sizeof(tcb_t));
+
+    uint32_t id;
+    Assert(id_pool_allocate_id(&thread_id_pool, &id));
+    new_thread->id = id;
+
+    char buf[32];
+    sprintf(buf, "thread-%u", new_thread->id);
+    strcpy_with_len(new_thread->name, buf);
+
+    new_thread->ticks = 0;
+
+    // 需要在当前进程释放吗?不需要，高地址空间是共享的，每个内核都能看到kernel_stack
+    uint32_t kernel_stack = (uint32_t)kmalloc_align(KERNEL_STACK_SIZE);
+    for(int32_t i = 0; i < KERNEL_STACK_SIZE / PAGE_SIZE; i++){
+        map_page(kernel_stack + i * PAGE_SIZE); // <-- 进行了页表映射
+    }
+    memcpy((void*)kernel_stack, (void*)crt_thread->kernel_stack, KERNEL_STACK_SIZE);
+
+    new_thread->kernel_stack = kernel_stack;
+    // 指向应该返回的位置
+    new_thread->kernel_esp = kernel_stack + KERNEL_STACK_SIZE - (uint32_t)(sizeof(switch_stack_t) + sizeof(interrupt_stack_t));
+
+    switch_stack_t* ss = (switch_stack_t*)new_thread->kernel_esp; 
+    // interrupt_stack_t* is = (interrupt_stack_t*)(new_thread->kernel_esp + sizeof(switch_stack_t)); 
+
+    // 设置resume_thread ret后去到syscall_fork_exit伪装中断出栈，进入到用户态的相同代码处
+    ss->thread_entry_eip = (uint32_t)syscall_fork_exit;
+
+    return new_thread;
+
+}
