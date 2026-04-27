@@ -10,6 +10,7 @@
 #include "task/scheduler.h"
 #include "task/process.h"
 #include "interrupt/protect_fault.h"
+#include "fs/vfs.h"
 
 void run_all_heap_tests();
 
@@ -34,6 +35,7 @@ int main(){
     //run_all_heap_tests();
     init_task_manager();
     init_process_manager();
+    init_file_system();
     init_scheduler();
 
 
