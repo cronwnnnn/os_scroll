@@ -1,5 +1,5 @@
 [GLOBAL syscall_entry]
-[GLOBAL syscall_exit]
+[GLOBAL syscall_normal_exit]
 [GLOBAL syscall_fork_exit]
 
 [EXTERN syscall_handler]
@@ -33,7 +33,7 @@ syscall_entry:
     sti
     call syscall_handler
 
-syscall_exit:
+syscall_normal_exit:
     ; recover the original data segment.
     ; Do NOT use eax because it is the return value of syscall!
     pop ecx

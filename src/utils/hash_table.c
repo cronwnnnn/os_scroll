@@ -123,3 +123,21 @@ void* hash_table_remove(hash_table_t* this, uint32_t key) {
   }
   return nullptr;
 }
+
+void hash_table_destroy(hash_table_t* this) {
+  for (int32_t i = 0; i < this->buckets_num; i++) {
+    linked_list_t* bucket = &this->buckets[i];
+    linked_list_node_t* kv_node = bucket->head;
+    while (kv_node != nullptr) {
+      hash_table_kv_t* kv = (hash_table_kv_t*)kv_node->ptr;
+      kfree(kv);
+      linked_list_node_t* crt_node = kv_node;
+      kv_node = crt_node->next;
+      linked_list_remove(bucket, crt_node);
+      kfree(crt_node);
+    }
+  }
+  kfree(this->buckets);
+  this->size = 0;
+}
+

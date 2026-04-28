@@ -124,5 +124,14 @@ void register_interrupt_handler(uint32_t int_num, isr_t handler);
 void init_idt();
 void disable_interrupt();
 void enable_interrupt();
+static inline uint32_t interrupt_disable() {
+    uint32_t eflags;
+    asm volatile("pushfl; popl %0; cli" : "=g"(eflags));
+    return eflags; // 返回关中断之前的状态！
+}
+
+static inline void interrupt_restore(uint32_t eflags) {
+    asm volatile("pushl %0; popfl" : : "g"(eflags));
+}
 
 #endif

@@ -474,3 +474,15 @@ static inline void inc_cow_ref(uint32_t frame) {
     phy_frames_array[frame]++;
     yieldlock_unlock(&phy_frames_map_lock);
 }
+
+void release_page_tables(uint32_t pde_index_start, uint32_t num){
+    for (uint32_t i = pde_index_start; i < pde_index_start + num; i++) {
+        pde_t* pde = (pde_t*)PAGE_DIR_VIRTUAL + i;
+        if (!pde->present) {
+            continue;
+        }
+        release_phy_frame(pde->frame);
+        *((uint32_t*)pde) = 0;
+  }
+
+}

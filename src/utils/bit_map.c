@@ -17,6 +17,12 @@ bitmap_t bitmap_create(uint32_t* bitarray, size_t totalbits) {
     return ret;
 }
 
+void bitmap_clear(bitmap_t* this) {
+  for (uint32_t i = 0; i < this->arraysize; i++) {
+    this->bitarray[i] = 0;
+  }
+}
+
 
 // 只是bitmap_mem的初始化函数，位图的内存由调用者提供，没用自动创建bitmap
 bool bitmap_init(bitmap_t* this, uint32_t* bitarray, size_t totalbits) {

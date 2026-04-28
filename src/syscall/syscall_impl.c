@@ -13,7 +13,7 @@ static int32_t syscall_fork_impl(){
     return process_fork();
 }
 
-static int32_t syscall_exec_impl(char* file_path, uint32_t argc, char** argv){
+static int32_t syscall_exec_impl(char* file_path, int32_t argc, char** argv){
     Panic("this system call not exist");
     return -1;
 }
