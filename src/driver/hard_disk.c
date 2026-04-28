@@ -5,9 +5,6 @@
 
 extern void read_disk(char* buffer, uint32_t start_sector, uint32_t sector_num);
 
-void init_hard_disk(){
-    // ???
-}
 
 static void read_sector(char* buffer, uint32_t sector) {
   read_disk(buffer, sector, 1);
