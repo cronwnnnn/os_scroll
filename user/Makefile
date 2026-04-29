@@ -20,7 +20,8 @@ SYS_OBJS = \
 
 # 我们暂时只测试存在的程序
 PROGS = \
-  ${BIN_DIR}/hello
+  ${BIN_DIR}/hello \
+  ${BIN_DIR}/init
 
 all: prepare image
 

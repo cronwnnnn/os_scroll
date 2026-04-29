@@ -44,6 +44,13 @@ tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t pr
         strcpy_with_len(thread->name, buf);
     }
 
+    // init thread_note
+    thread->crt_node_ptr = &thread->schedule_node;
+    thread->schedule_node.prev = NULL;
+    thread->schedule_node.next = NULL;
+    thread->schedule_node.ptr = thread;
+    thread->crt_queue = NULL; 
+
     thread->status = TASK_READY;
     thread->ticks = 0;
     thread->priority = priority;
@@ -112,7 +119,7 @@ void destroy_thread(tcb_t* thread){
 }
 
 uint32_t prepare_user_stack(
-    tcb_t* thread, uint32_t stack_top, uint32_t argc, char** argv, uint32_t return_addr){
+    tcb_t* thread, uint32_t stack_top, int32_t argc, char** argv, uint32_t return_addr){
         uint32_t total_argv_length = 0;
 
         for(int32_t i = 0; i < argc; i++){
@@ -143,7 +150,7 @@ uint32_t prepare_user_stack(
         }
 
 
-        stack_top -= (argc+1) * 4;
+        stack_top -= (uint32_t)(argc+1) * 4;
         uint32_t argv_start = stack_top;
         for(int32_t i = 0; i < argc + 1; i++){
             *((char**)argv_start + i) = args[i];
@@ -153,7 +160,7 @@ uint32_t prepare_user_stack(
         stack_top -= 4;
         *((uint32_t*)stack_top) = argv_start;
         stack_top -= 4;
-        *((uint32_t*)stack_top) = argc + 1;
+        *((uint32_t*)stack_top) = (uint32_t)argc + 1;
 
         stack_top -= 4;
         *((uint32_t*)stack_top) = return_addr;
@@ -171,6 +178,11 @@ tcb_t* fork_crt_thread(){
     Assert(new_thread != NULL);
 
     memcpy((void*)new_thread, (void*)crt_thread, sizeof(tcb_t));
+    new_thread->crt_node_ptr = &new_thread->schedule_node;
+    new_thread->schedule_node.prev = NULL;
+    new_thread->schedule_node.next = NULL;
+    new_thread->schedule_node.ptr = new_thread;
+    new_thread->crt_queue = NULL; 
 
     uint32_t id;
     Assert(id_pool_allocate_id(&thread_id_pool, &id));

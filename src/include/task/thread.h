@@ -4,6 +4,7 @@
 #include "interrupt/interrupt.h"
 #include "utils/linked_list.h"
 
+
 typedef void thread_func();
 
 #define KERNEL_STACK_SIZE 8192
@@ -51,6 +52,9 @@ struct task_control_block{
     pcb_t* process;
 
     int32_t preempt_count;
+    linked_list_t*  crt_queue;        // 它正在挂在哪个队列下面 (ready?, waiting?,dead?)
+    thread_node_t  schedule_node;     // 它对应的thread_node
+    thread_node_t*  crt_node_ptr;     // 它对应的thread_node
 
 };
 
@@ -80,7 +84,7 @@ typedef struct switch_stack switch_stack_t;
 tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t priority, uint8_t is_user_thread);
 void destroy_thread(tcb_t* thread);
 void init_task_manager();
-uint32_t prepare_user_stack(tcb_t* thread, uint32_t stack_top, uint32_t argc, char** argv, uint32_t return_addr);
+uint32_t prepare_user_stack(tcb_t* thread, uint32_t stack_top, int32_t argc, char** argv, uint32_t return_addr);
 tcb_t* fork_crt_thread();
 
 

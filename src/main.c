@@ -11,6 +11,7 @@
 #include "task/process.h"
 #include "interrupt/protect_fault.h"
 #include "fs/vfs.h"
+#include "interrupt/disk_read.h"
 
 void run_all_heap_tests();
 
@@ -25,6 +26,7 @@ int main(){
     monitor_printf("i am a kernel, my address is %d\n", 1111);
     init_idt();
     init_timer(TIMER_FREQUENCY);
+    init_hard_disk();
     init_protect_fault();
     monitor_print("IDT and timer initialized successfully.\n");
     init_page();

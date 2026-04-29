@@ -25,6 +25,7 @@ static void kernel_main_thread();
 static void kernel_clean_thread();
 static bool has_dead_resource();
 void process_switch(pcb_t* process);
+static void kernel_init_thread();
 
 
 
@@ -77,8 +78,7 @@ void init_scheduler(){
     main_process = create_and_add_process("kernel_main_process", true);
     Assert(main_process != NULL);
     tcb_t* main_thread = create_new_kernel_thread(main_process, "main_thread", kernel_main_thread);
-    main_thread_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
-    main_thread_node->ptr = main_thread;
+    main_thread_node = main_thread->crt_node_ptr;
     crt_thread_node = main_thread_node;
 
     asm volatile (
@@ -131,9 +131,13 @@ void scheduler_thread(){
 
 static void kernel_main_thread(){
     tcb_t* clean_thread = create_new_kernel_thread(main_process, "clean_thread", kernel_clean_thread);
-    kernel_clean_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
-    kernel_clean_node->ptr = clean_thread;
+    kernel_clean_node = clean_thread->crt_node_ptr;
     add_thread_node_to_schedule(kernel_clean_node);
+
+    pcb_t* init_process = create_and_add_process(nullptr, true);
+    tcb_t* init_thread = create_new_kernel_thread(init_process, "kernel init", kernel_init_thread);
+    add_thread_node_to_schedule(init_thread->crt_node_ptr);
+
 
     // 追加测试线程，以便让它们能被真正执行到并打印
     //tcb_t* first_t = create_new_kernel_thread(main_process, "test1", test_thread);
@@ -169,13 +173,15 @@ static void kernel_main_thread(){
 
 
     // =========================  fork  test =========================
+    /*
     pcb_t* test_proc = create_and_add_process("fork_test_process", false); 
     char* proc_argv[] = {"test_prog"};
     tcb_t* proc_thread = create_new_user_thread(test_proc, "proc_thread", user_mode_fork_test, 1, proc_argv);
     
     if(proc_thread != NULL){
-        add_thread_to_schedule(proc_thread);
+        add_thread_node_to_schedule(proc_thread->crt_node_ptr);
     }
+    */
 
     enable_interrupt();
     multi_task_enabled = true;
@@ -184,6 +190,14 @@ static void kernel_main_thread(){
         cpu_idle();
     }
 
+}
+
+static void kernel_init_thread(){
+    pcb_t* crt_process = get_crt_process();
+    crt_process->is_kernel_process = false;
+    if(process_exec("init", 0, nullptr) == -1){
+        Panic("init process can't exec!");
+    }
 }
 
 // 用于处理结束的线程
@@ -195,27 +209,41 @@ static void kernel_clean_thread(){
         linked_list_t clearing_tasks;
         linked_list_move(&clearing_tasks, &dead_tasks);
         
+        // 追加: 处理 dead_processes 的清理 (如果这里有进程死亡，我们需要把队列拿出来)
+        linked_list_t clearing_processes;
+        linked_list_move(&clearing_processes, &dead_processes);
+
         // 我们安全地完成了对 dead_tasks 的提取，释放锁，让其他线程可以继续追加 dead_tasks
         yieldlock_unlock(&dead_resource_lock);
 
-        // 对于每个node，要释放其在链表中指向的地址，还要释放node中存着的thread的内容以及其指向的thread_kernel内容
-        // 最后释放掉当前node
-    // 注意：`clearing_tasks` 是你从 `dead_tasks` 里 move 出来的新链表
+        // =================清理死掉的线程=================
         while (clearing_tasks.size > 0)
         {
             monitor_print("clean 1 thread\n");
             linked_list_node_t* head = clearing_tasks.head;
             linked_list_remove(&clearing_tasks, head);
             tcb_t* thread = (tcb_t*)head->ptr;
-            destroy_thread(thread);
+            destroy_thread(thread);   // 清除 thread 的内核栈、tcb、如果没退出还会清除进程表中的项
+            kfree(head);              // 清理用于包装该线程的调度节点
+        }
+        
+        // =================清理死掉的进程=================
+        while (clearing_processes.size > 0)
+        {
+            monitor_print("clean 1 process\n");
+            linked_list_node_t* head = clearing_processes.head;
+            linked_list_remove(&clearing_processes, head);
+            pcb_t* process = (pcb_t*)head->ptr;
+            destroy_process(process);
+            
+            // TODO: 调用 destroy_process(process) 等接口
+            // 比如释放 process 的页表、文件描述符表、进程锁块、kfree(process)
+            
             kfree(head);
         }
          
-        // 清理完退出
-        schedule_thread_yield();
-
+        // 清理完后再次回到等待
     }
-    
 }
 
 
@@ -224,6 +252,8 @@ static void kernel_clean_thread(){
 void do_context_switch(){
 
     if (ready_tasks.size == 0) {
+        tcb_t* main_thread = main_thread_node->ptr;
+        main_thread->crt_queue = &ready_tasks;
         linked_list_append(&ready_tasks, main_thread_node);
         main_thread_in_ready_queue = 1;
     }
@@ -237,6 +267,7 @@ void do_context_switch(){
     if(old_thread->status == TASK_RUNNING && old_thread_node != main_thread_node){
         old_thread->status = TASK_READY;
         // 把马上被挂起的旧任务的 node 放回队列(目前只有 first/second)
+        old_thread->crt_queue = &ready_tasks;
         linked_list_append(&ready_tasks, old_thread_node);
     }
     old_thread->ticks = 0;
@@ -262,7 +293,7 @@ void do_context_switch(){
     }
     
     // 把下一个任务的 node 从从队列中拿出来
-    linked_list_remove(&ready_tasks, next_thread_node);  
+    remove_thread_from_current_queue(next_thread);  
     
     /*
     // Setup env for next thread (and maybe a different process)
@@ -302,35 +333,52 @@ void process_switch(pcb_t* process) {
     reload_page_dir(&process->page_dir);
 }
 
-void add_thread_to_schedule(tcb_t* thread){
-    thread_node_t* thread_node = (thread_node_t*)kmalloc(sizeof(thread_node_t));
-    thread_node->ptr = thread;
-    add_thread_node_to_schedule(thread_node);
-}
 
 void add_thread_node_to_schedule(thread_node_t* thread_node){
-    disable_interrupt();
+    uint32_t init_status = interrupt_disable();
     tcb_t* thread = thread_node->ptr; 
     if(thread->status != TASK_DEAD){
         thread->status = TASK_READY;
     }
+    thread->crt_queue = &ready_tasks;
     linked_list_append(&ready_tasks, thread_node);
-    enable_interrupt();
+    interrupt_restore(init_status);
 }
 
 void add_thread_node_to_schedule_head(thread_node_t* thread_node) {
-    disable_interrupt();
+    uint32_t init_status = interrupt_disable();
     tcb_t* thread = (tcb_t*)thread_node->ptr;
     if(thread->status != TASK_DEAD){
         thread->status = TASK_READY;
     }
+    thread->crt_queue = &ready_tasks;
     linked_list_insert_to_head(&ready_tasks, thread_node);
-    enable_interrupt();
+    interrupt_restore(init_status);
 }
 
-void add_dead_tasks(thread_node_t* thread){
+void remove_thread_from_current_queue(tcb_t* thread) {
+    if (thread == NULL || thread->crt_queue == NULL || thread->crt_node_ptr == NULL) {
+        Panic(" this thread didn't have queue");
+        return; // 它不属于任何队列，可能是正在 CPU 上跑，或者是游离状态
+    }
+
+    uint32_t init_status =  interrupt_disable(); // 动队列必须关中断保护
+    
+    // 直接强制摘除
+    linked_list_remove(thread->crt_queue, thread->crt_node_ptr);
+    
+    // 抹除记录，说明它已经脱离了该队列
+    thread->crt_queue = NULL;
+    // 注意：不要清空 crt_node_ptr，因为这个 node 可能稍后还要复用（比如在 CPU 上跑完再插回队尾）
+
+    interrupt_restore(init_status);
+}
+
+void add_dead_tasks(thread_node_t* thread_node){
     yieldlock_lock(&dead_resource_lock);
-    linked_list_append(&dead_tasks, thread);
+    tcb_t* thread = thread_node->ptr;
+    thread->crt_queue = &dead_tasks;
+    linked_list_append(&dead_tasks, thread_node);
     cond_var_notify(&dead_cv);
     yieldlock_unlock(&dead_resource_lock);
 }
@@ -391,68 +439,4 @@ void add_new_process(pcb_t* process) {
 }
 
 
-void dummy_delay() {
-    // 这里的数字需要足够大，确保在这个循环跑完期间，
-    // 时钟中断（比如你设置的是 10ms 触发一次）至少会发生一次或多次。
-    // 如果系统比较慢，可以把数字调小点；如果用的是比较快的虚拟机，可能要写到 10000000。
-    volatile int i = 50000000; 
-    while (i > 0) {
-        i--;
-    }
-}
 
-int global_var = 100;
-void user_mode_fork_test() {
-    syscall_print("===================\n");
-    syscall_print("User Mode Fork Test Start!\n");
-    
-    uint32_t* ptr = (uint32_t*)0xF2000000;
-    *ptr = 1;
-
-    int local_var = 10; 
-    
-    int32_t pid = syscall_fork();
-
-    if (pid < 0) {
-        syscall_print("Fork Failed!\n");
-        while(1);
-    } 
-    else if (pid == 0) {
-        // --- 子进程 ---
-        syscall_print("[Child] I am the child process.\n");
-        
-        local_var = 20;    
-        global_var = 200;  
-        
-        syscall_print("[Child] Modifying variables: local=20, global=200\n");
-        
-        // 刻意拖延时间，在这个期间，时钟中断肯定会发生，
-        // CPU 会被强行抢占，切换回父进程去检查变量是否被污染。
-        syscall_print("[Child] Delaying to force a preemption...\n");
-        dummy_delay(); 
-        
-        syscall_print("[Child] Execution finished.\n");
-        while (1) { dummy_delay(); } // 挂起
-    } 
-    else {
-        // --- 父进程 ---
-        syscall_print("[Parent] I am the parent. My child's PID is > 0.\n");
-        syscall_print("[Parent] Waiting for child to modify variables...\n");
-        
-        // 父进程这里不着急检查，先跑一个漫长的延时循环。
-        // 这期间必然会被时钟中断打断，切换到刚 fork 出来的子进程那里去。
-        // 等子进程修改完变量，并同样因为时钟中断被挂起后，又会切回到父进程继续走。
-        dummy_delay();
-        dummy_delay(); // 跑两次确保子进程已经改过变量了
-
-        // 验证内存隔离
-        if (local_var == 10 && global_var == 200) {
-            syscall_print("[Parent] Test PASS: Memory is isolated!\n");
-        } else {
-            syscall_print("[Parent] Test FAIL: Variables were overwritten by child!\n");
-        }
-        
-        syscall_print("[Parent] Execution finished.\n");
-        while (1) { dummy_delay(); } // 挂起
-    }
-}

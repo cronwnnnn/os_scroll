@@ -13,11 +13,11 @@ void cond_var_wait(cond_var_t* cv, yieldlock_t* lock, cv_predicator_func predica
         thread_node_t* thread_node = get_crt_thread_node();
         
         // 同样保护 cv 的专用队列不受中断干扰
-        disable_interrupt();
+        uint32_t init_status = interrupt_disable();
         linked_list_append(&cv->waiting_queue, thread_node);
         // 让schedule不要调度运行这个线程，知道被notify恢复
         schedule_mark_thread_block(); 
-        enable_interrupt();
+        interrupt_restore(init_status);
 
         yieldlock_unlock(lock);
         schedule_thread_yield();
@@ -31,12 +31,12 @@ void cond_var_wait(cond_var_t* cv, yieldlock_t* lock, cv_predicator_func predica
 
 void cond_var_notify(cond_var_t* cv){
     // 保护 wait_queue，使得 notify 成为绝对安全的原子操作
-    disable_interrupt();
+    uint32_t init_status = interrupt_disable();
     if(cv->waiting_queue.size != 0){
         thread_node_t* thread_node = cv->waiting_queue.head;
         linked_list_remove(&cv->waiting_queue, thread_node);
         // 将清理线程加入schedule中，使其可以被调度
         add_thread_node_to_schedule(thread_node);
     }
-    enable_interrupt();
+    interrupt_restore(init_status);
 }

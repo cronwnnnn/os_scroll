@@ -155,6 +155,7 @@ bool is_in_irq_context() {
     return in_irq_context;
 }
 
+
 void init_pic() {
   // master
   outb(0x20, 0x11);

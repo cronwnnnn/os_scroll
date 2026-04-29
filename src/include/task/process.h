@@ -68,9 +68,11 @@ struct process_struct {
 typedef struct process_struct pcb_t;
 
 void init_process_manager();
-tcb_t* create_new_user_thread(pcb_t* process, char* name, void* user_function, uint32_t argc, char** argv);
+tcb_t* create_new_user_thread(pcb_t* process, char* name, void* user_function, int32_t argc, char** argv);
 tcb_t* create_new_kernel_thread(pcb_t* process, char* name, void* function);
 pcb_t* create_and_add_process(char* name, uint8_t is_kernel_process);
 int32_t process_fork();
+void destroy_process(pcb_t* process);
+int32_t process_exec(char* path, int32_t argc, char* argv[]);
 
 #endif

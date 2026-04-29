@@ -6,6 +6,7 @@ LD = ld
 # 目录定义
 SRC_DIR = src
 BUILD_DIR = build
+USER_DIR = user
 
 DEP_FLAGS = -MMD -MP
 
@@ -49,10 +50,17 @@ DEPS = $(OBJ:.o=.d)
 
 all: image
 
-image:$(KERNEL) $(MBR) $(LOADER)
+image:$(KERNEL) $(MBR) $(LOADER) disk
 	dd if=$(BUILD_DIR)/mbr.bin of=hardware/scroll.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(BUILD_DIR)/loader.bin of=hardware/scroll.img bs=512 count=8 seek=1 conv=notrunc
 	dd if=$(BUILD_DIR)/kernel.elf of=hardware/scroll.img bs=512 count=2048 seek=9 conv=notrunc
+	dd if=$(USER_DIR)/user_disk_image of=hardware/scroll.img bs=512 count=2048 seek=2057 conv=notrunc
+
+disk: user_progs
+
+user_progs: 
+	cd ./${USER_DIR} && make
+
 
 $(MBR): $(SRC_DIR)/boot/mbr.asm
 	@echo "Assembling MBR..."
