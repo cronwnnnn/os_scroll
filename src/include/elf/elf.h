@@ -3,6 +3,8 @@
 
 #include "common/types.h"
 
+#define PT_LOAD 1
+
 struct elf32_ehdr {
   uint8_t  e_ident[16];    // Magic number
   uint16_t e_type;         // Object file type
