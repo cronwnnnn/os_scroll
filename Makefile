@@ -19,6 +19,14 @@ KERNEL = $(BUILD_DIR)/kernel.elf
 MBR = $(BUILD_DIR)/mbr.bin
 LOADER = $(BUILD_DIR)/loader.bin
 
+# 如果你想编译多核版本，就把下面这行注释掉
+IS_SINGLE_CORE = 1
+
+# 动态判断并注入宏
+ifdef IS_SINGLE_CORE
+    CFLAGS += -D SINGLE_PROCESSOR 
+endif
+
 # ================= 2. 寻找源文件与计算目标文件 =================
 
 # 使用 shell find 命令递归查找所有 .c 和 .asm 文件

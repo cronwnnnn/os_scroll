@@ -12,6 +12,7 @@
 #include "interrupt/protect_fault.h"
 #include "fs/vfs.h"
 #include "interrupt/disk_read.h"
+#include "driver/keyboard.h"
 
 void run_all_heap_tests();
 
@@ -28,6 +29,7 @@ int main(){
     init_timer(TIMER_FREQUENCY);
     init_hard_disk();
     init_protect_fault();
+    init_keyboard();
     monitor_print("IDT and timer initialized successfully.\n");
     init_page();
     monitor_print("page stage1 initialized successfully.\n");

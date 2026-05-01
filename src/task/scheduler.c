@@ -433,10 +433,15 @@ pcb_t* get_crt_process(){
 }
 
 void add_new_process(pcb_t* process) {
-  yieldlock_lock(&processes_map_lock);
-  hash_table_put(&processes_map, process->id, process);
-  yieldlock_unlock(&processes_map_lock);
+    yieldlock_lock(&processes_map_lock);
+    hash_table_put(&processes_map, process->id, process);
+    yieldlock_unlock(&processes_map_lock);
 }
 
+void disable_preempt() {
+    get_crt_thread()->preempt_count += 1;
+}
 
-
+void enable_preempt() {
+    get_crt_thread()->preempt_count -= 1;
+}
