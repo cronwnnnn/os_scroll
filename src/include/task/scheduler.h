@@ -31,5 +31,8 @@ void remove_thread_from_current_queue(tcb_t* thread);
 void add_dead_tasks(thread_node_t* thread_node);
 
 bool multi_task_is_enabled();
+void disable_preempt();
+void enable_preempt(); 
+
 
 #endif

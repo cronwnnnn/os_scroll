@@ -121,7 +121,7 @@ void isr_handler(isr_params_t regs){
         in_irq_context = true;
     } else {
         // Not a hardware interrupt, enable interrupt as quickly as possible.
-        enable_interrupt();
+        // 不能无脑的开中断，要在中断结束时统一开启，对于那些处理时间很长的中断处理函数，应该在自己函数中sti
     }
     if (interrupt_handlers[int_num] != 0) {
         interrupt_handlers[int_num](regs);
@@ -132,7 +132,6 @@ void isr_handler(isr_params_t regs){
     }
     if (in_irq_context) {
         in_irq_context = false;
-        enable_interrupt();
     }
 
 }

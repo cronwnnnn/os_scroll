@@ -52,6 +52,8 @@ static void pagefault_handler(isr_params_t regs) {
     }
 
     if (!present) {
+        // 需要开中断的地方开启,页分配可能很耗时
+        enable_interrupt();
         // 找到是否由于页不存在导致的缺页
         map_page(faulting_address / PAGE_SIZE * PAGE_SIZE);
         reload_page_dir(current_page_directory);
@@ -65,6 +67,9 @@ static void pagefault_handler(isr_params_t regs) {
             monitor_printf("Protection Fault! User process trying to write Kernel memory at 0x%x\n", faulting_address);
             Panic("System halted due to Privilege Violation.");
         }
+
+        // cow也可能很耗时
+        enable_interrupt(); 
 
         // 这里稍后填入调用专门处理 COW 的函数
         handle_cow_fault(faulting_address);
@@ -296,7 +301,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
 }
 
 void handle_cow_fault(uint32_t vaddr){
-    monitor_print("use cow!!!!!!!!!");
+    monitor_print("use cow!!!!!!!!!\n");
 
     uint32_t pd_index = vaddr >> 22;
     pde_t* pd = (pde_t*)PAGE_DIR_VIRTUAL;
