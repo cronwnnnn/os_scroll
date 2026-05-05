@@ -4,9 +4,11 @@
 #include "task/process.h"
 #include "monitor/monitor.h"
 #include "driver/keyboard.h"
+#include "fs/vfs.h"
+
 
 static int32_t syscall_exit_impl(int32_t exit_num){
-    Panic("this system call not exist");
+    process_exit(exit_num);
     return -1;
 }
 
@@ -28,8 +30,12 @@ static int32_t syscall_read_char_impl() {
     return read_keyboard_char();
 }
 
-static int32_t syscall_wait_impl(uint32_t pid, uint32_t* status) {
+static int32_t syscall_wait_impl(int32_t pid, uint32_t* status) {
   return process_wait(pid, status);
+}
+
+static int32_t syscall_listdir_impl(char* dir){
+    return list_dir(dir);
 }
 
 
@@ -51,6 +57,8 @@ int32_t syscall_handler(isr_params_t isr_params){
             return syscall_read_char_impl();
         case SYSCALL_WAIT_NUM:
             return syscall_wait_impl(isr_params.ecx, (uint32_t*)isr_params.edx);
+        case SYSCALL_LISTDIR_NUM:
+            return syscall_listdir_impl((char*)isr_params.ecx);
 
 
         default:
