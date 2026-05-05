@@ -1,12 +1,7 @@
 #include "common/types.h"
 #include "syscall/syscall.h"
-#include "user_sys/user_io.h"
 
 int main(int32_t argc, char* argv[]) {
-  while (1)
-  {
-    
-  }
-  
+  syscall_listdir(".");
   return 0;
 }

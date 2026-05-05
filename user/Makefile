@@ -16,12 +16,15 @@ LDFLAGS=-m elf_i386 -T link.ld
 SYS_OBJS = \
 	$(SYS_LIB_DIR)/syscall/syscall.o \
 	$(SYS_LIB_DIR)/syscall/syscall_trigger.o \
-	$(LIB_DIR)/user_sys/common.o
+	$(LIB_DIR)/user_sys/common.o \
+	$(LIB_DIR)/user_sys/stdlib.o \
+	$(LIB_DIR)/user_sys/user_io.o
 
 # 我们暂时只测试存在的程序
 PROGS = \
   ${BIN_DIR}/hello \
   ${BIN_DIR}/shell \
+  ${BIN_DIR}/ls \
   ${BIN_DIR}/init
 
 all: prepare image

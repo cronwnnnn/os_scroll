@@ -1,8 +1,11 @@
 #include "syscall/syscall.h"
 #include "common/types.h"
+#include "user_sys/stdlib.h"
+#include "user_sys/user_io.h"
 
 int main(int32_t argc, char** agrv){
-    syscall_print("successfully load user file!!!!\n");
+    printf("successfully load user file!!!!\n");
+    
     int32_t pid = syscall_fork();
     if(pid < 0){
         syscall_print("fork failed\n");
