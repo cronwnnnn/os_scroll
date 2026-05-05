@@ -33,6 +33,8 @@ void add_dead_tasks(thread_node_t* thread_node);
 bool multi_task_is_enabled();
 void disable_preempt();
 void enable_preempt(); 
+void schedule_mark_thread_block();
+void add_dead_process(pcb_t* process);
 
 
 #endif

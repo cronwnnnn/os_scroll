@@ -65,5 +65,6 @@ page_directory_t clone_crt_page_dir();
 void reload_page_dir(page_directory_t *dir);
 void release_page_tables(uint32_t pde_index_start, uint32_t num);
 void release_pages(uint32_t vaddr, size_t page_count, bool frame_free);;
+void release_phy_frame(uint32_t frame);
 
 #endif // INTERRUPT_PAGE_H

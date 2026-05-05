@@ -37,7 +37,7 @@ struct task_control_block{
     uint32_t kernel_esp;    // 指向栈的当前esp处
     uint32_t kernel_stack;  // 指向栈的最低地址,防止栈越界
 
-    uint32_t id;
+    int32_t id;
     char name[32];
     enum task_status status;
     uint8_t priority;

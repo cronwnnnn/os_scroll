@@ -17,6 +17,7 @@ static id_pool_t process_id_pool;
 void add_process_thread(pcb_t* process, tcb_t* new_thread);
 void add_child_process(pcb_t* parent, pcb_t* child);
 static void release_user_space_pages();
+void clear_crt_process_other_thread_locked();
 
 void init_process_manager(){
     id_pool_init(&process_id_pool, PROCESS_NUM, MAX_PROCESS_NUM);
@@ -27,8 +28,8 @@ pcb_t* create_process(char* name, uint8_t is_kernel_process){
     pcb_t* process = (pcb_t*)kmalloc(sizeof(pcb_t));
     memset(process, 0, sizeof(pcb_t));
 
-    uint32_t pid;
-    if(!id_pool_allocate_id(&process_id_pool, &pid)){
+    int32_t pid;
+    if(!id_pool_allocate_id(&process_id_pool, (uint32_t*)&pid)){
         return NULL;
     }
     process->id = pid;
@@ -57,8 +58,8 @@ pcb_t* create_process(char* name, uint8_t is_kernel_process){
 
     hash_table_init(&process->exit_children_processes);
 
+    // 用于进程退出与等待
     process->waiting_child_pid = 0;
-
     process->waiting_thread_node = nullptr;
 
     process->page_dir = clone_crt_page_dir();
@@ -113,46 +114,14 @@ int32_t process_exec(char* path, int32_t argc, char* argv[]){
         kfree(read_buffer);
         return -1;
     }
-
-    //========================= 首先消除当前进程的其他线程，保留当前线程 =====================================
     pcb_t* crt_process = get_crt_process();
     tcb_t* crt_thread = get_crt_thread();
+    //========================= 首先消除当前进程的其他线程，保留当前线程 =====================================
+    // 包括消除所有线程的用户栈index???
     yieldlock_lock(&crt_process->lock);
-    
-    for (int32_t i = 0; i < crt_process->threads.buckets_num; i++) {
-        linked_list_t* bucket = &crt_process->threads.buckets[i];
-        linked_list_node_t* kv_node = bucket->head;
-        while (kv_node != nullptr) {
-            hash_table_kv_t* kv = (hash_table_kv_t*)kv_node->ptr;
-            tcb_t* iter_thread = (tcb_t*)kv->v_ptr;
-            
-            // 找出属于当前进程的，但不是自己这个执行 exec 的线程
-            if (iter_thread != crt_thread) {
-                // 1. 从当前所处的调度队列或阻塞队列中强行摘下
-                remove_thread_from_current_queue(iter_thread);
-                
-                // 2. 标记状态为死亡
-                iter_thread->status = TASK_DEAD;
-                
-                // 3. 将它交给垃圾回收线程去自动 kfree
-                add_dead_tasks(iter_thread->crt_node_ptr);
-                
-                // 4. 清除它在这个进程内部占用的位图等信息（相当于原地 remove_process_thread）
-                // 在外部一次性清空
-            }
-            kv_node = kv_node->next;
-        }
-    }
-    
-    // 把进程哈希表中的所有线程彻底清空（其实通过上面的循环可以安全删，但为了防止破坏链表遍历，通常遍历完后再重置）
-    hash_table_destroy(&crt_process->threads); 
-    hash_table_init(&crt_process->threads); // 重新初始化为一个空的 map
-    
-    // 把自己（crt_thread）重新加回进程管理中
-    hash_table_put(&crt_process->threads, crt_thread->id, crt_thread);
-
-    bitmap_clear(&crt_process->user_thread_stack_indexes);
+    clear_crt_process_other_thread_locked();
     yieldlock_unlock(&crt_process->lock);
+    //========================= 首先消除当前进程的其他线程，保留当前线程 =====================================
 
     // 将存在用户栈的argv 和 path保存起来，因为之后要release所有用户内存，避免丢失
     char** args = copy_str_array(argc, argv);
@@ -161,7 +130,6 @@ int32_t process_exec(char* path, int32_t argc, char* argv[]){
 
     // 除去所有线程的用户空间
     release_user_space_pages();
-    //========================= 首先消除当前进程的其他线程，保留当前线程 =====================================
 
     // ============================== 为当前线程分配新的用户栈 =======================================
     uint32_t stack_index;
@@ -301,6 +269,174 @@ static void release_user_space_pages() {
   release_page_tables(1, 767);
 }
 
+// 消除当前进程的全部资源，但不包括自身以及页目录
+void release_crt_process_resources_locked(){
+    pcb_t* process = get_crt_process();
+    // 消除当前进程申请的所有数据结构
+    hash_table_destroy(&process->threads);
+    hash_table_destroy(&process->exit_children_processes);
+    // ?? 这个不能销毁，需要给父进程？？？
+    hash_table_destroy(&process->children_processes);
+    
+    bitmap_destroy(&process->user_thread_stack_indexes);
+    kfree(process->waiting_thread_node);
+    release_user_space_pages();
+}
+
 void destroy_process(pcb_t* process){
-    Panic("not complete process destroy!!!");
+    // 在父进程中释放掉死亡进程的所有不能自己释放的资源
+    // 注意page_directory_entries是* PAGE_SIZE之后的值，release前要 /PAGE_SIZE
+    uint32_t frame = process->page_dir.page_directory_entries / PAGE_SIZE;
+    release_phy_frame(frame);
+    id_pool_free_id(&process_id_pool,process->id);
+    kfree(process);
+}
+
+int32_t process_wait(int32_t pid, uint32_t* status){
+    Assert(pid >= 0);
+
+    pcb_t* process = get_crt_process();
+    thread_node_t* thread_node = get_crt_thread_node();
+
+    yieldlock_lock(&process->lock);
+    // 根本没有子进程，等个蛋
+    if(process->children_processes.size == 0){
+        yieldlock_unlock(&process->lock);
+        return -1;
+    }
+
+    // 子进程根本就没有这个pid的，直接退出
+    if (pid > 0 && hash_table_get(&process->children_processes, pid) == nullptr) {
+        yieldlock_unlock(&process->lock);
+        return -1;
+    }
+    // 用于子进程在退出时判断需不需要唤醒父进程，若是父进程的pid则唤醒, 0则表示根本没有等待
+    process->waiting_child_pid = (pid > 0 ? pid : process->id);
+    pcb_t* child = NULL;
+
+    while(1){
+        hash_table_t* exit_children = &process->exit_children_processes;
+        if(exit_children->size > 0){
+            // 如果等任意一个child死亡
+            if(pid == 0){
+                child = hash_table_get_first(exit_children);
+                Assert(child != NULL);
+                child = hash_table_remove(exit_children, child->id);
+                Assert(child != NULL);
+                break;
+            }else{
+                // 等特定进程死亡
+                child = hash_table_remove(exit_children, pid);
+                if(child != NULL){
+                    break;
+                }
+            }
+        }
+        // 如果要找到进程现在没有退出，就设为阻塞并等待唤醒
+        process->waiting_thread_node = thread_node;
+        schedule_mark_thread_block();
+        yieldlock_unlock(&process->lock);
+        schedule_thread_yield();
+        // 回来之后继续上锁
+        yieldlock_lock(&process->lock);
+
+    }
+
+    // 找到要等的进程了
+    if (status != nullptr) {
+        *status = child->exit_code;
+    }
+
+    yieldlock_unlock(&process->lock);
+    // 等clean线程清除他
+    add_dead_process(child);
+
+    return 0;
+}
+
+void process_exit(int32_t exit_code){
+    pcb_t* process = get_crt_process();
+    tcb_t* thread = get_crt_thread();
+    pcb_t* parent = process->parent;
+    Assert(parent != NULL);
+
+    yieldlock_lock(&process->lock);
+    // 除了当前线程，还有其他线程在运行
+    if(process->threads.size > 1){
+        clear_crt_process_other_thread_locked();
+    }
+
+    // 此处应该传给init进程来回收
+    if(process->children_processes.size > 0 || process->exit_children_processes.size > 0){
+        Panic("process_exit: thread still have child process, can't exit!!!");
+    }
+
+    tcb_t* removed_thread = hash_table_remove(&process->threads, thread->id);
+    Assert(removed_thread == thread);
+
+    process->exit_code = exit_code;
+    process->status = PROCESS_EXIT;
+    release_crt_process_resources_locked();
+    // 在release_crt_process_resources_locked之后再将thread的process指向null
+    // 否则会直接assert报错，因为release_crt_process_resources_locked 找不到当前process了
+    thread->process = nullptr;
+
+    yieldlock_unlock(&process->lock);
+
+    yieldlock_lock(&parent->lock);
+    // 把当前进程加入父母的退出进程队列，且如果进程正在等待自己或者任何一个进程结束，则唤醒他
+    hash_table_put(&parent->exit_children_processes, process->id, process);
+    // 父进程真的在wait，才会唤醒线程
+    if(parent->waiting_thread_node != NULL){
+        Assert(parent->waiting_child_pid > 0);
+        if(parent->waiting_child_pid == parent->id || parent->waiting_child_pid == process->id){
+            add_thread_node_to_schedule(parent->waiting_thread_node);
+        }
+    }
+    
+    yieldlock_unlock(&parent->lock);
+
+    schedule_thread_exit();
+}
+
+
+// 清除当前进程除了这个线程的所有其他线程，用于process_exec和process_exit
+// 还会消除所有线程的用户栈index，慎用，否则可能导致两个thread栈冲突
+void clear_crt_process_other_thread_locked(){
+    pcb_t* crt_process = get_crt_process();
+    tcb_t* crt_thread = get_crt_thread();
+    
+    for (int32_t i = 0; i < crt_process->threads.buckets_num; i++) {
+        linked_list_t* bucket = &crt_process->threads.buckets[i];
+        linked_list_node_t* kv_node = bucket->head;
+        while (kv_node != nullptr) {
+            hash_table_kv_t* kv = (hash_table_kv_t*)kv_node->ptr;
+            tcb_t* iter_thread = (tcb_t*)kv->v_ptr;
+            
+            // 找出属于当前进程的，但不是自己这个执行 exec 的线程
+            if (iter_thread != crt_thread) {
+                // 1. 从当前所处的调度队列或阻塞队列中强行摘下
+                remove_thread_from_current_queue(iter_thread);
+                
+                // 2. 标记状态为死亡
+                iter_thread->status = TASK_DEAD;
+                
+                // 3. 将它交给垃圾回收线程去自动 kfree
+                add_dead_tasks(iter_thread->crt_node_ptr);
+                
+                // 4. 清除它在这个进程内部占用的位图等信息（相当于原地 remove_process_thread）
+                // 在外部一次性清空
+            }
+            kv_node = kv_node->next;
+        }
+    }
+    
+    // 把进程哈希表中的所有线程彻底清空（其实通过上面的循环可以安全删，但为了防止破坏链表遍历，通常遍历完后再重置）
+    hash_table_destroy(&crt_process->threads); 
+    hash_table_init(&crt_process->threads); // 重新初始化为一个空的 map
+    
+    // 把自己（crt_thread）重新加回进程管理中
+    hash_table_put(&crt_process->threads, crt_thread->id, crt_thread);
+
+    bitmap_clear(&crt_process->user_thread_stack_indexes);
 }

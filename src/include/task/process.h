@@ -27,7 +27,7 @@ enum process_status {
 
 struct process_struct {
 
-    uint32_t id;
+    int32_t id;
     char name[32];
 
     struct process_struct* parent;
@@ -74,5 +74,7 @@ pcb_t* create_and_add_process(char* name, uint8_t is_kernel_process);
 int32_t process_fork();
 void destroy_process(pcb_t* process);
 int32_t process_exec(char* path, int32_t argc, char* argv[]);
+int32_t process_wait(int32_t pid, uint32_t* status);
+void process_exit(int32_t exit_code);
 
 #endif

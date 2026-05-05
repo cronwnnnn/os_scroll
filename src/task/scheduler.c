@@ -209,7 +209,7 @@ static void kernel_clean_thread(){
         linked_list_t clearing_tasks;
         linked_list_move(&clearing_tasks, &dead_tasks);
         
-        // 追加: 处理 dead_processes 的清理 (如果这里有进程死亡，我们需要把队列拿出来)
+        // 处理 dead_processes 的清理 (如果这里有进程死亡，我们需要把队列拿出来)
         linked_list_t clearing_processes;
         linked_list_move(&clearing_processes, &dead_processes);
 
@@ -224,7 +224,9 @@ static void kernel_clean_thread(){
             linked_list_remove(&clearing_tasks, head);
             tcb_t* thread = (tcb_t*)head->ptr;
             destroy_thread(thread);   // 清除 thread 的内核栈、tcb、如果没退出还会清除进程表中的项
-            kfree(head);              // 清理用于包装该线程的调度节点
+            // 对于thread不需要kfree，因为这个node本身就是tcb结构体的一部分而非单独malloc出来的
+            // kfree thread后也就没了
+            //kfree(head);              // 清理用于包装该线程的调度节点
         }
         
         // =================清理死掉的进程=================
@@ -236,9 +238,7 @@ static void kernel_clean_thread(){
             pcb_t* process = (pcb_t*)head->ptr;
             destroy_process(process);
             
-            // TODO: 调用 destroy_process(process) 等接口
-            // 比如释放 process 的页表、文件描述符表、进程锁块、kfree(process)
-            
+            // 但是process的node仍然是自己malloc并放入的，需要kfree
             kfree(head);
         }
          
@@ -379,6 +379,13 @@ void add_dead_tasks(thread_node_t* thread_node){
     tcb_t* thread = thread_node->ptr;
     thread->crt_queue = &dead_tasks;
     linked_list_append(&dead_tasks, thread_node);
+    cond_var_notify(&dead_cv);
+    yieldlock_unlock(&dead_resource_lock);
+}
+
+void add_dead_process(pcb_t* process){
+    yieldlock_lock(&dead_resource_lock);
+    linked_list_append_ele(&dead_processes, process);
     cond_var_notify(&dead_cv);
     yieldlock_unlock(&dead_resource_lock);
 }

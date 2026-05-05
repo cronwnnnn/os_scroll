@@ -124,6 +124,7 @@ void* hash_table_remove(hash_table_t* this, uint32_t key) {
   return nullptr;
 }
 
+// 消除当前哈希表中存的所有kmalloc出来的值，但不包括放入的数据本身
 void hash_table_destroy(hash_table_t* this) {
   for (int32_t i = 0; i < this->buckets_num; i++) {
     linked_list_t* bucket = &this->buckets[i];
@@ -141,3 +142,17 @@ void hash_table_destroy(hash_table_t* this) {
   this->size = 0;
 }
 
+void* hash_table_get_first(hash_table_t* this) {
+    if (this->size == 0) {
+        return NULL;
+    }
+    
+    for (int32_t i = 0; i < this->buckets_num; i++) {
+        linked_list_t* bucket = &this->buckets[i];
+        if (bucket->head != NULL) {
+            hash_table_kv_t* kv = (hash_table_kv_t*)bucket->head->ptr;
+            return kv->v_ptr;
+        }
+    }
+    return NULL;
+}
