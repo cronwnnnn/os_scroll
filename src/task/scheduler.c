@@ -89,45 +89,8 @@ void init_scheduler(){
 
 }
 
-void test_thread(){
-    //int32_t i = 100;
-    while (1)
-    {
-        monitor_print("thread1111 running!\n");
-        // 增加空循环或者主动释放cpu，防止一直占用 monitor_lock 导致线程2饥饿
-        int delay = 100000;
-        while(delay--);
-    }
-}
 
-void test_thread2(){
-    //int32_t i = 100;
-    while (1)
-    {
-        monitor_print("thread2222 running!\n");
-        // 增加空循环或者主动释放cpu，防止一直占用 monitor_lock 导致线程1饥饿
-        int delay = 100000;
-        while(delay--);
-    }
-}
 
-void user_mode_test_program() {
-    // 此时我们期望自己已经身处 Ring 3 
-    // 不能调用 monitor_print! 否则会触发 Page Fault (缺页/权限越界)
-    
-    // 故意执行一条只有 Ring 0 才能执行的特权指令：关闭中断
-    asm volatile ("cli"); 
-
-    // 如果能走到这里，说明在 Ring 0，测试失败。
-    while(1);
-}
-
-/*
-void scheduler_thread(){
-    first_thread = init_thread(NULL, "test1", test_thread, THREAD_DEFAULT_PRIORITY, false);
-    linked_list_append(ready_tasks,)
-}
-*/
 
 static void kernel_main_thread(){
     tcb_t* clean_thread = create_new_kernel_thread(main_process, "clean_thread", kernel_clean_thread);
@@ -137,51 +100,6 @@ static void kernel_main_thread(){
     pcb_t* init_process = create_and_add_process(nullptr, true);
     tcb_t* init_thread = create_new_kernel_thread(init_process, "kernel init", kernel_init_thread);
     add_thread_node_to_schedule(init_thread->crt_node_ptr);
-
-
-    // 追加测试线程，以便让它们能被真正执行到并打印
-    //tcb_t* first_t = create_new_kernel_thread(main_process, "test1", test_thread);
-    //tcb_t* second_t = create_new_kernel_thread(main_process, "test2", test_thread2);
-    //add_thread_to_schedule(first_t);
-    //add_thread_to_schedule(second_t);
-
-    /*
-    tcb_t* user_t = init_thread(NULL, "user_test", user_mode_test_program, THREAD_DEFAULT_PRIORITY, true);
-    uint32_t fake_user_stack = (uint32_t)kmalloc_align(PAGE_SIZE);
-    map_page(fake_user_stack);
-    
-    // 伪造一点参数压栈
-    char* argv[] = {"test_prog"};
-    prepare_user_stack(user_t, fake_user_stack + PAGE_SIZE, 1, argv, 0);
-
-    // 把这个用户线程加入调度队列
-    add_thread_to_schedule(user_t);
-    */
-    // 测试刚才完整的 Process 和 Thread 实现
-    
-    // ========================= create process test =========================
-    /*
-    pcb_t* test_proc = create_and_add_process("my_test_process", false); // 0 表示这是一个用户进程
-    char* proc_argv[] = {"proc_test_main"};
-    tcb_t* proc_thread = create_new_user_thread(test_proc, "proc_thread", user_mode_test_program, 1, proc_argv);
-    if(proc_thread != NULL){
-        add_thread_to_schedule(proc_thread);
-    } else {
-        monitor_print("Failed to create process user thread!\n");
-    }
-    */
-
-
-    // =========================  fork  test =========================
-    /*
-    pcb_t* test_proc = create_and_add_process("fork_test_process", false); 
-    char* proc_argv[] = {"test_prog"};
-    tcb_t* proc_thread = create_new_user_thread(test_proc, "proc_thread", user_mode_fork_test, 1, proc_argv);
-    
-    if(proc_thread != NULL){
-        add_thread_node_to_schedule(proc_thread->crt_node_ptr);
-    }
-    */
 
     enable_interrupt();
     multi_task_enabled = true;
