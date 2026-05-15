@@ -291,7 +291,7 @@ setup_page:
 ; ************* create and fill page_dir **************
 .create_pde:
   mov eax, PAGE_DIR_PHYSICAL_ADDR - PAGE_SIZE
-  or eax, PG_P | PG_RW_W | PG_US_U
+  or eax, PG_P | PG_RW_W | PG_US_S
   ;for first 1MB physical memory
   ; page to first and 768th entry of page dir,
   ; the virtual address 0x00000000 and 0xC0000000 can both map to the first 1MB physical memory
@@ -299,11 +299,11 @@ setup_page:
   mov [PAGE_DIR_PHYSICAL_ADDR + 768 * 4], eax
   ;for pde
   mov eax, PAGE_DIR_PHYSICAL_ADDR
-  or eax, PG_P | PG_RW_W | PG_US_U
+  or eax, PG_P | PG_RW_W | PG_US_S
   mov [PAGE_DIR_PHYSICAL_ADDR + 769 * 4], eax
   ;otehr kernel page
   mov eax, PAGE_DIR_PHYSICAL_ADDR + PAGE_SIZE
-  or eax, PG_P | PG_RW_W | PG_US_U
+  or eax, PG_P | PG_RW_W | PG_US_S
   mov ecx, 254
   mov edx, PAGE_DIR_PHYSICAL_ADDR + 770 * 4
 .create_kernel_pde:
@@ -315,7 +315,7 @@ setup_page:
 
 ;************* create and first page table**************
   mov eax, 0
-  or eax, PG_P | PG_RW_W | PG_US_U
+  or eax, PG_P | PG_RW_W | PG_US_S
   mov ecx, 256
   mov edx, PAGE_DIR_PHYSICAL_ADDR - PAGE_SIZE 
 .create_pte:
@@ -387,7 +387,7 @@ set_page_mapping:
   mov edi, [ebp + 12] ; physical addr start
   mov ecx, [ebp + 16] ; num of pages
   shr esi, 12
-  or edi, PG_US_U | PG_RW_W | PG_P
+  or edi, PG_US_S | PG_RW_W | PG_P
 .map_next_page:
   mov [PAGE_TAB_VIRTUAL_ADDR + esi * 4], edi
   add esi, 1

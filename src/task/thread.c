@@ -136,6 +136,7 @@ uint32_t prepare_user_stack(
         char* args[argc+1];
         char* args_stack_addr = (char*)stack_top;
 
+        // 将线程的名字拷贝到栈顶作为argv[0]
         int32_t len = strcpy_with_len(args_stack_addr, thread->name);
         args[0] = args_stack_addr;
         args_stack_addr += (len+1);

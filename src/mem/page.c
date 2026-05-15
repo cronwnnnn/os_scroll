@@ -63,11 +63,13 @@ static void pagefault_handler(isr_params_t regs) {
     // 如果页面存在 (present == 1) 且是因为写入 (rw == 1) 导致的中断，这可能是 COW
     if (present && rw) {
 
+        // 用户态越界访问了内核数据
         if (user_mode && faulting_address >= 0xC0000000) {
             monitor_printf("Protection Fault! User process trying to write Kernel memory at 0x%x\n", faulting_address);
             Panic("System halted due to Privilege Violation.");
         }
 
+        // 否则便是COW
         // cow也可能很耗时
         enable_interrupt(); 
 
