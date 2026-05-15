@@ -5,17 +5,7 @@
 #include "fs/ext2_fs.h"
 #include "driver/hard_disk.h"
 
-uint32_t* find_free_blocks(FILE* disk_fp, uint32_t blocks_needed) {
-    // 读取 Superblock
-    struct superblock sb;
-    fseek(disk_fp, 0, SEEK_SET);
-    fread(&sb, sizeof(sb), 1, disk_fp);
-
-    // 读取 Data Bitmap
-    uint8_t data_bitmap[FS_BLOCK_SIZE];
-    fseek(disk_fp, sb.data_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
-    fread(data_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
-
+uint32_t* find_free_blocks(struct superblock* sb, uint8_t* data_bitmap, uint32_t blocks_needed) {
     uint32_t* allocated = malloc(blocks_needed * sizeof(uint32_t));
     uint32_t found = 0;
 
@@ -25,7 +15,7 @@ uint32_t* find_free_blocks(FILE* disk_fp, uint32_t blocks_needed) {
         if ((data_bitmap[byte_idx] & (1 << bit_idx)) == 0) {
             // 找到空闲块，将位图置 1
             data_bitmap[byte_idx] |= (1 << bit_idx);
-            allocated[found++] = sb.data_blocks_start + i;
+            allocated[found++] = sb->data_blocks_start + i;
         }
     }
 
@@ -35,35 +25,19 @@ uint32_t* find_free_blocks(FILE* disk_fp, uint32_t blocks_needed) {
         return NULL;
     }
 
-    // 由于上面对data_bitmap的更改只是在内存中没有写回，因此即使不够也不会真的将位图置为1
-    // 写回更新后的 Data Bitmap
-    fseek(disk_fp, sb.data_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
-    fwrite(data_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
-
     return allocated;
 }
 
-uint32_t get_free_inode_num(FILE* disk_fp) {
-    struct superblock sb;
-    fseek(disk_fp, 0, SEEK_SET);
-    fread(&sb, sizeof(sb), 1, disk_fp);
-
-    uint8_t inode_bitmap[FS_BLOCK_SIZE];
-    fseek(disk_fp, sb.inode_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
-    fread(inode_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
-
+uint32_t get_free_inode_num(uint8_t* inode_bitmap) {
     for (uint32_t i = 0; i < FS_BLOCK_SIZE * 8; i++) {
         uint32_t byte_idx = i / 8;
         uint32_t bit_idx = i % 8;
         if ((inode_bitmap[byte_idx] & (1 << bit_idx)) == 0) {
             inode_bitmap[byte_idx] |= (1 << bit_idx);
-            // 写回更新后的 Inode Bitmap
-            fseek(disk_fp, sb.inode_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
-            fwrite(inode_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
             return i;
         }
     }
-    return -1;
+    return (uint32_t)-1;
 }
 
 void write_inode_to_disk(FILE* disk_fp, uint32_t inode_num, struct inode* new_inode) {
@@ -126,19 +100,44 @@ void inject_file(FILE *disk_fp, const char *external_path, const char *internal_
     fread(buffer, 1, file_size, ext_fp);
     fclose(ext_fp);
 
-    // 2. 在磁盘镜像中寻找足够的空闲块 (通过读取镜像的 Data Bitmap)
+    // 2. 在磁盘镜像中寻找足够的空闲块与 Inode
     uint32_t blocks_needed = (file_size + FS_BLOCK_SIZE - 1) / FS_BLOCK_SIZE;
     if (blocks_needed > 12) {
         printf("File too large for direct blocks only!\n");
         free(buffer);
         return;
     }
+
+    struct superblock sb;
+    fseek(disk_fp, 0, SEEK_SET);
+    fread(&sb, sizeof(sb), 1, disk_fp);
+
+    // 将两个 Bitmap 读入内存
+    uint8_t data_bitmap[FS_BLOCK_SIZE];
+    fseek(disk_fp, sb.data_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
+    fread(data_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
+
+    uint8_t inode_bitmap[FS_BLOCK_SIZE];
+    fseek(disk_fp, sb.inode_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
+    fread(inode_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
     
-    uint32_t *allocated_blocks = find_free_blocks(disk_fp, blocks_needed);
-    if (!allocated_blocks) {
+    // 在内存中检查资源分配
+    uint32_t *allocated_blocks = find_free_blocks(&sb, data_bitmap, blocks_needed);
+    uint32_t new_inode_num = get_free_inode_num(inode_bitmap);
+
+    if (!allocated_blocks || new_inode_num == (uint32_t)-1) {
+        printf("Failed to allocate enough blocks or inode!\n");
+        if (allocated_blocks) free(allocated_blocks);
         free(buffer);
         return;
     }
+
+    // 资源均分配成功，刷写改动后的 Bitmap 回磁盘
+    fseek(disk_fp, sb.data_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
+    fwrite(data_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
+
+    fseek(disk_fp, sb.inode_bitmap_blk * FS_BLOCK_SIZE, SEEK_SET);
+    fwrite(inode_bitmap, FS_BLOCK_SIZE, 1, disk_fp);
 
     // 3. 将字节流写入镜像对应的偏移位置
     for (uint32_t i = 0; i < blocks_needed; i++) {
@@ -157,7 +156,6 @@ void inject_file(FILE *disk_fp, const char *external_path, const char *internal_
     new_inode.size = file_size;
     memcpy(new_inode.blocks, allocated_blocks, blocks_needed * sizeof(uint32_t));
     
-    uint32_t new_inode_num = get_free_inode_num(disk_fp);
     write_inode_to_disk(disk_fp, new_inode_num, &new_inode);
 
     // 5. 更新目录项...
