@@ -74,7 +74,7 @@ static int32_t simple_fs_read_data(char* filename, char* buffer, uint32_t start,
         length = size;
     }
 
-    read_hard_disk(buffer, offset, length);
+    read_hard_disk(buffer, offset, length, 1);
     return length;
 }
 
@@ -95,7 +95,7 @@ void init_simple_fs(){
 
     // 获取每个文件的参数
     // 读有多少个file
-    read_hard_disk((char*)&file_nums, 0 + simple_file_system.partition.offset, sizeof(uint32_t));
+    read_hard_disk((char*)&file_nums, 0 + simple_file_system.partition.offset, sizeof(uint32_t), 1);
     Assert(file_nums > 0);
     if (file_nums > 1024) {  // 或者你允许的最大文件数量
         Panic("too many files, use dir!!!");
@@ -103,7 +103,7 @@ void init_simple_fs(){
 
     uint32_t meta_size = file_nums * sizeof(simple_file_meta_t);
     file_metas = (simple_file_meta_t*)kmalloc(meta_size);
-    read_hard_disk((char*)file_metas, 4 + simple_file_system.partition.offset, meta_size);
+    read_hard_disk((char*)file_metas, 4 + simple_file_system.partition.offset, meta_size, 1);
     for (int i = 0; i < file_nums; i++) {
         simple_file_meta_t* meta = file_metas + i;
         monitor_printf(" - %s, offset = %d, size = %d\n", meta->filename, meta->offset, meta->size);

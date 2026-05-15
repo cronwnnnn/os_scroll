@@ -10,5 +10,7 @@ bin/
 build/
 user/progs
 user/lib
-user/user_disk_image
-user/disk_image_writer
+user/file_system.img
+user/fs/disk_image_writer
+user/fs/mkfs
+

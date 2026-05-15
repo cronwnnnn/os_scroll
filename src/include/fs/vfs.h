@@ -8,9 +8,11 @@
 
 enum fs_type {
   SIMPLE,
+  EXT2,
   EXT4
 };
 
+// 文件系统在磁盘中的偏移量，对于有的文件系统，前面还有kernel,有的是双磁盘的，就为0了
 struct disk_partition {
   uint32_t offset;
 };

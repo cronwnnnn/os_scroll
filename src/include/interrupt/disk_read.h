@@ -1,6 +1,6 @@
 #ifndef INTERRUPT_DISK_READ_H
 #define INTERRUPT_DISK_READ_H
 
-void init_hard_disk();
+void init_hard_disk_interrupt();
 
 #endif

@@ -33,11 +33,17 @@ prepare:
 	mkdir -p $(BIN_DIR)
 	mkdir -p $(LIB_DIR)/user_sys
 
-image: disk_image_writer progs greeting
-	./disk_image_writer ./progs
+image: disk_image_writer progs greeting file_system_img
+	./fs/disk_image_writer ./progs
 
-disk_image_writer: write_disk_image.c
-	gcc -o disk_image_writer write_disk_image.c
+disk_image_writer: ./fs/write_disk_image.c ./fs/fs_inject.c
+	gcc -I../src/include -o ./fs/disk_image_writer ./fs/write_disk_image.c ./fs/fs_inject.c
+
+file_system_img:
+	rm -f file_system.img
+	dd if=/dev/zero of=file_system.img bs=1M count=100
+	gcc -I../src/include -o ./fs/mkfs ./fs/mkfs.c
+	./fs/mkfs
 
 progs: ${PROGS}
 
@@ -55,4 +61,4 @@ $(LIB_DIR)/user_sys/%.o: $(SRC_DIR)/user_sys/%.c $(SRC_DIR)/user_sys/%.h
 	$(CC) $(CFLAGS) $(IFLAGS) -c $< -o $@
 
 clean:
-	rm -rf ${BIN_DIR} ${LIB_DIR} user_disk_image disk_image_writer greeting.txt
+	rm -rf ${BIN_DIR} ${LIB_DIR} user_disk_image disk.img ./fs/disk_image_writer ./fs/mkfs

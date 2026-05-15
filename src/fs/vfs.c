@@ -1,15 +1,16 @@
 #include "fs/vfs.h"
 #include "fs/simple_fs.h"
+#include "fs/ext2_fs.h"
 #include "common/secure.h"
 
 
 static fs_t* get_fs(char* path) {
   // This is the only fs we have mount :)
-  return get_simple_fs();
+  return get_ext2_fs();
 }
 
 void init_file_system() {
-    init_simple_fs();
+    init_ext2_fs();
 }
 
 int32_t stat_file(char* filename, file_stat_t* stat) {

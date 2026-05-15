@@ -62,7 +62,8 @@ image:$(KERNEL) $(MBR) $(LOADER) disk
 	dd if=$(BUILD_DIR)/mbr.bin of=hardware/scroll.img bs=512 count=1 seek=0 conv=notrunc
 	dd if=$(BUILD_DIR)/loader.bin of=hardware/scroll.img bs=512 count=8 seek=1 conv=notrunc
 	dd if=$(BUILD_DIR)/kernel.elf of=hardware/scroll.img bs=512 count=2048 seek=9 conv=notrunc
-	dd if=$(USER_DIR)/user_disk_image of=hardware/scroll.img bs=512 count=2048 seek=2057 conv=notrunc
+# 文件系统放到另一个img中
+# dd if=$(USER_DIR)/user_disk_image of=hardware/scroll.img bs=512 count=2048 seek=2057 conv=notrunc
 
 disk: user_progs
 

@@ -40,7 +40,16 @@ read_disk:
     shr eax, 8
     and al, 0x0f
 
-    or al, 0xe0  ; 0x1110, LBA mode
+    ; 根据第4个参数 is_slave 判断是主盘还是从盘
+    mov ecx, [ebp + 20]  ; is_slave 参数
+    cmp ecx, 1
+    je .slave_mode
+.master_mode:
+    or al, 0xe0          ; 1110, LBA mode, Master
+    jmp .out_1f6
+.slave_mode:
+    or al, 0xf0          ; 1111, LBA mode, Slave
+.out_1f6:
     mov dx, 0x1f6
     out dx, al
 
