@@ -320,9 +320,13 @@ void schedule_thread_exit(){
     thread_node_t* threadnode = get_crt_thread_node();
     Assert(threadnode != NULL);
     tcb_t* thread = (tcb_t*)threadnode->ptr;
-    thread->status = TASK_DEAD;
-    add_dead_tasks(threadnode);
+    
+    // 关闭中断防止被定时器中断切走
     disable_interrupt();
+    
+    add_dead_tasks(threadnode);
+    thread->status = TASK_DEAD;
+
     do_context_switch();
 }
 

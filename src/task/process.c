@@ -92,6 +92,7 @@ int32_t process_fork(){
     add_new_process(new_process);
     // 同时复制了上一个线程的所有内容，包括用户栈地址，因此在这个进程将该用户栈地址置为已占有，防止覆盖
     bitmap_set_bit(&new_process->user_thread_stack_indexes, new_thread->user_stack_index);
+    // 最后才放入调度队列，防止提前调度
     add_thread_node_to_schedule(new_thread->crt_node_ptr);
 
     // 父进程返回子进程的id
@@ -114,6 +115,11 @@ int32_t process_exec(char* path, int32_t argc, char* argv[]){
         kfree(read_buffer);
         return -1;
     }
+
+    // 在磁盘 I/O 完成后，即将开始不可逆的资源重分配，必须关闭中断
+    // 防止在用户空间页表被清空、或旧线程被清理一半时，调度器意外介入
+    disable_interrupt();
+
     pcb_t* crt_process = get_crt_process();
     tcb_t* crt_thread = get_crt_thread();
     //========================= 首先消除当前进程的其他线程，保留当前线程 =====================================
@@ -333,6 +339,8 @@ int32_t process_wait(int32_t pid, uint32_t* status){
             }
         }
         // 如果要找到进程现在没有退出，就设为阻塞并等待唤醒
+        // 当前只能一个进程下有一个线程等待，不允许多个！！！
+        Assert(process->waiting_thread_node == thread_node || process->waiting_thread_node == NULL);
         process->waiting_thread_node = thread_node;
         schedule_mark_thread_block();
         yieldlock_unlock(&process->lock);
@@ -359,6 +367,9 @@ void process_exit(int32_t exit_code){
     tcb_t* thread = get_crt_thread();
     pcb_t* parent = process->parent;
     Assert(parent != NULL);
+
+    // 对于结束进程这样涉及大量资源改变的底层操作，需要整个过程不可被中断切割
+    uint32_t init_interrupt_status = interrupt_disable();
 
     yieldlock_lock(&process->lock);
     // 除了当前线程，还有其他线程在运行
@@ -391,12 +402,17 @@ void process_exit(int32_t exit_code){
         Assert(parent->waiting_child_pid > 0);
         if(parent->waiting_child_pid == parent->id || parent->waiting_child_pid == process->id){
             add_thread_node_to_schedule(parent->waiting_thread_node);
+            parent->waiting_thread_node = NULL; // 唤醒后清空防止重复唤醒
         }
     }
     
     yieldlock_unlock(&parent->lock);
 
+    // 此时仍然是关中断状态，可以直接调用 exit，它内部又会 disable 一次(安全重复)并 context_switch 不再回来
     schedule_thread_exit();
+    
+    // 这里永远不会执行到了
+    interrupt_restore(init_interrupt_status);
 }
 
 
@@ -418,11 +434,11 @@ void clear_crt_process_other_thread_locked(){
                 // 1. 从当前所处的调度队列或阻塞队列中强行摘下
                 remove_thread_from_current_queue(iter_thread);
                 
-                // 2. 标记状态为死亡
-                iter_thread->status = TASK_DEAD;
-                
-                // 3. 将它交给垃圾回收线程去自动 kfree
+                // 2. 将它交给垃圾回收线程去自动 kfree
                 add_dead_tasks(iter_thread->crt_node_ptr);
+
+                // 3. 标记状态为死亡
+                iter_thread->status = TASK_DEAD;
                 
                 // 4. 清除它在这个进程内部占用的位图等信息（相当于原地 remove_process_thread）
                 // 在外部一次性清空

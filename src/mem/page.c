@@ -303,7 +303,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
 }
 
 void handle_cow_fault(uint32_t vaddr){
-    monitor_print("use cow!!!!!!!!!\n");
+    // monitor_print("use cow!!!!!!!!!\n");
 
     uint32_t pd_index = vaddr >> 22;
     pde_t* pd = (pde_t*)PAGE_DIR_VIRTUAL;
