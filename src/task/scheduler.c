@@ -249,7 +249,7 @@ void schedule(){
 
 void process_switch(pcb_t* process) {
     // 将当前cr3指向要转换的进程的页表并刷新tlb
-    reload_page_dir(&process->page_dir);
+    switch_page_dir(&process->page_dir);
 }
 
 

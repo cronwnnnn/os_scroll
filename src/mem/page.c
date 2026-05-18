@@ -33,10 +33,20 @@ static page_directory_t kernel_page_directory;
 static yieldlock_t page_copy_lock;
 
 
-void reload_page_dir(page_directory_t *dir){
-    //刷新cr3 页目录，让其重新读取页目录的新增内容
+// 用于进程切换,必须全换
+void switch_page_dir(page_directory_t* dir) {
     current_page_directory = dir;
-    asm volatile ("mov %0, %%cr3" :: "r"(current_page_directory->page_directory_entries));
+    asm volatile ("mov %0, %%cr3" :: "r"(dir->page_directory_entries) : "memory");
+}
+
+// 只刷新tlb中对应vaddr的某一页
+static inline void flush_tlb_page(uint32_t vaddr) {
+    asm volatile ("invlpg (%0)" :: "r"(vaddr) : "memory");
+}
+
+// 直接刷新全部tlb，但是dir不变，用于大规模的更新当前页目录这种
+static inline void flush_tlb_all(void) {
+    asm volatile ("mov %%cr3, %%eax; mov %%eax, %%cr3" ::: "eax", "memory");
 }
 
 static void pagefault_handler(isr_params_t regs) {
@@ -57,7 +67,6 @@ static void pagefault_handler(isr_params_t regs) {
         enable_interrupt();
         // 找到是否由于页不存在导致的缺页
         map_page(faulting_address / PAGE_SIZE * PAGE_SIZE);
-        reload_page_dir(current_page_directory);
         return;
     } 
     
@@ -76,7 +85,6 @@ static void pagefault_handler(isr_params_t regs) {
 
         // 这里稍后填入调用专门处理 COW 的函数
         handle_cow_fault(faulting_address);
-        reload_page_dir(current_page_directory);
         return;
     }
 
@@ -119,7 +127,7 @@ void init_page() {
 static void unmap_low_identity() {
     pde_t* pd = (pde_t*)PAGE_DIR_VIRTUAL;
     *((uint32_t*)&pd[0]) = 0;
-    reload_page_dir(current_page_directory);
+    flush_tlb_all();
 }
 
 
@@ -146,7 +154,7 @@ static void release_page(uint32_t vaddr, bool frame_free){
         release_phy_frame(pte->frame);
     }
     *((uint32_t*)pte) = 0; //清除pte
-    reload_page_dir(current_page_directory); //刷新页目录
+    flush_tlb_page(vaddr); //刷新单页 TLB
 
     if(multi_task_is_enabled()){
         yieldlock_unlock(&get_crt_thread()->process->page_dir_lock);
@@ -263,7 +271,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
         pde->frame = addr;
         
         // 分配完成之后刷新页目录使其能被查到,并清理页表处的物理地址，防止错误映射
-        reload_page_dir(current_page_directory);
+        flush_tlb_all();
         clear_page(PAGE_TABLES_VIRTUAL + pd_index * PAGE_SIZE);
     }
 
@@ -281,7 +289,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
         pte->user = is_user_page;
         pte->rw = 1;
         pte->frame = frame;
-        reload_page_dir(current_page_directory);
+        flush_tlb_page(vaddr);
     }
     // 若没有指定frame，则需要分配物理内存并映射，但是有两种情况
     // 对于present为0，表示要访问的物理地址不存在，需要分配并且清零
@@ -299,7 +307,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame){
             pte->frame = frame;
             
             // 分配完成之后刷新页目录使其能被查到,并清理分配物理地址处的内存，防止访问到之前该物理地址的内容
-            reload_page_dir(current_page_directory);
+            flush_tlb_page(vaddr);
             clear_page(vaddr);
         }else{
             // 这是由于kmalloc后又再次调用了map_page，但是kmalloc实际已经触发page_fault了，不管即可
@@ -331,7 +339,7 @@ void handle_cow_fault(uint32_t vaddr){
     if(get_phy_frame_ref(frame) == 1){
         // 就剩一个进程用它了，直接允许即可
         pte->rw = 1;
-        reload_page_dir(current_page_directory);
+        flush_tlb_page(vaddr);
     }else{
         int32_t cow_frame = alloc_phy_frame();
         if(cow_frame == -1){
@@ -354,7 +362,8 @@ void handle_cow_fault(uint32_t vaddr){
         pte->rw = 1;
         if(multi_task_is_enabled()){
             yieldlock_unlock(&get_crt_thread()->process->page_dir_lock);
-        }        
+        }
+        flush_tlb_page(vaddr);
 
 
         release_pages(copy_page, 1, false);
@@ -381,7 +390,6 @@ page_directory_t clone_crt_page_dir(){
     // 获取全局拷贝锁，防止多个进程同时fork使用同个临时虚拟地址
     yieldlock_lock(&page_copy_lock);
     map_page_with_frame(copied_page_dir, new_pd_frame);
-    reload_page_dir(current_page_directory);
     // 将申请的一页内存值清空为0
     clear_page(copied_page_dir);
 
@@ -428,7 +436,6 @@ page_directory_t clone_crt_page_dir(){
         
         // 修复死锁：已经加了 page_dir_lock，绝对不能调用外层的 map_page_with_frame，否则会同一把锁加两次导致死锁！
         map_page_with_frame_impl(copied_page_table, new_pt_frame);
-        reload_page_dir(current_page_directory);
         
         // 修复严重Bug：原代码是把 crt_pde 拷贝给 copied_page_dir。
         // 这会导致把原页目录项及后续 4KB 垃圾数据覆盖到新页目录。
@@ -446,7 +453,7 @@ page_directory_t clone_crt_page_dir(){
             new_pte->rw = 0;
             inc_cow_ref(new_pte->frame);
         }
-        reload_page_dir(current_page_directory);
+        flush_tlb_all();
 
         if(multi_task_is_enabled()){
             yieldlock_unlock(&get_crt_thread()->process->page_dir_lock);
@@ -472,7 +479,7 @@ page_directory_t clone_crt_page_dir(){
     // 释放临时页专属拷贝锁
     yieldlock_unlock(&page_copy_lock);
 
-    // release_page中已经reload_page_dir了，不用再调用
+    // release_page 中已经刷新对应 TLB，不用再调用
 
     page_directory_t new_page_dir;
     // 指向新进程的页目录的物理地址
