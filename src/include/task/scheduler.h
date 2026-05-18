@@ -35,6 +35,7 @@ void disable_preempt();
 void enable_preempt(); 
 void schedule_mark_thread_block();
 void add_dead_process(pcb_t* process);
+pcb_t* get_init_process();
 
 
 #endif

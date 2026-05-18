@@ -52,11 +52,13 @@ struct process_struct {
     // exit children processes
     hash_table_t exit_children_processes;
 
-    // child pid that is waiting
-    uint32_t waiting_child_pid;
+    // 有哪些线程在等待自己死亡
+    struct wait_node* exit_wait_queue;
+    // 当前进程中等待任何一个的线程
+    struct wait_node* wait_any_exit_queue;
 
-    // waiting thread
-    struct linked_list_node* waiting_thread_node;
+    // Number of threads currently blocked or sleeping in process_wait().
+    uint32_t waiting_threads_count;
 
     // page directory
     page_directory_t page_dir;
@@ -66,6 +68,13 @@ struct process_struct {
     yieldlock_t lock;
 };
 typedef struct process_struct pcb_t;
+
+struct wait_node {
+    thread_node_t* task; // 真正的主角：指向那个在睡觉的线程的指针
+    int32_t target_pid;         // 悬赏条件：你在等谁？
+    struct wait_node* next;   // 链表指针
+};
+typedef struct wait_node wait_node_t;
 
 void init_process_manager();
 tcb_t* create_new_user_thread(pcb_t* process, char* name, void* user_function, int32_t argc, char** argv);

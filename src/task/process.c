@@ -58,9 +58,11 @@ pcb_t* create_process(char* name, uint8_t is_kernel_process){
 
     hash_table_init(&process->exit_children_processes);
 
-    // 用于进程退出与等待
-    process->waiting_child_pid = 0;
-    process->waiting_thread_node = nullptr;
+    // 看哪些在等我
+    process->exit_wait_queue = NULL;
+    process->wait_any_exit_queue = NULL;
+    process->waiting_threads_count = 0;
+
 
     process->page_dir = clone_crt_page_dir();
     yieldlock_init(&process->page_dir_lock);
@@ -285,7 +287,6 @@ void release_crt_process_resources_locked(){
     hash_table_destroy(&process->children_processes);
     
     bitmap_destroy(&process->user_thread_stack_indexes);
-    kfree(process->waiting_thread_node);
     release_user_space_pages();
 }
 
@@ -305,22 +306,37 @@ int32_t process_wait(int32_t pid, uint32_t* status){
     thread_node_t* thread_node = get_crt_thread_node();
 
     yieldlock_lock(&process->lock);
-    // 根本没有子进程，等个蛋
-    if(process->children_processes.size == 0){
-        yieldlock_unlock(&process->lock);
-        return -1;
-    }
 
-    // 子进程根本就没有这个pid的，直接退出
-    if (pid > 0 && hash_table_get(&process->children_processes, pid) == nullptr) {
-        yieldlock_unlock(&process->lock);
-        return -1;
-    }
     // 用于子进程在退出时判断需不需要唤醒父进程，若是父进程的pid则唤醒, 0则表示根本没有等待
-    process->waiting_child_pid = (pid > 0 ? pid : process->id);
+    wait_node_t my_node;
+    my_node.next = NULL;
+    my_node.target_pid = pid;
+    // 指向自己，表示是自己正在等
+    my_node.task = thread_node;
+
     pcb_t* child = NULL;
 
+    bool counted_waiter = false;
+    bool in_queue = false;
     while(1){
+        // 根本没有子进程，等个蛋
+        if(process->children_processes.size == 0){
+            if(counted_waiter){
+                Assert(process->waiting_threads_count > 0);
+                process->waiting_threads_count--;
+            }
+            yieldlock_unlock(&process->lock);
+            return -1;
+        }
+        // 子进程根本就没有这个pid的，直接退出
+        if (pid > 0 && hash_table_get(&process->children_processes, pid) == nullptr) {
+            if(counted_waiter){
+                Assert(process->waiting_threads_count > 0);
+                process->waiting_threads_count--;
+            }
+            yieldlock_unlock(&process->lock);
+            return -1;
+        }
         hash_table_t* exit_children = &process->exit_children_processes;
         if(exit_children->size > 0){
             // 如果等任意一个child死亡
@@ -340,19 +356,47 @@ int32_t process_wait(int32_t pid, uint32_t* status){
         }
         // 如果要找到进程现在没有退出，就设为阻塞并等待唤醒
         // 当前只能一个进程下有一个线程等待，不允许多个！！！
-        Assert(process->waiting_thread_node == thread_node || process->waiting_thread_node == NULL);
-        process->waiting_thread_node = thread_node;
+
+        if(in_queue == false){
+            if(!counted_waiter){
+                process->waiting_threads_count++;
+                counted_waiter = true;
+            }
+            if(pid == 0){
+                // 等待任何一个，就加入自己的等全部队列
+                my_node.next = process->wait_any_exit_queue;
+                process->wait_any_exit_queue = &my_node;
+            }else if(pid > 0){
+                // 等特定的，就加要等的进程的队列
+                pcb_t* wait_child = hash_table_get(&process->children_processes, pid);
+                yieldlock_lock(&wait_child->lock);
+                my_node.next = wait_child->exit_wait_queue;
+                wait_child->exit_wait_queue = &my_node;
+                yieldlock_unlock(&wait_child->lock);
+            }
+            in_queue = true;
+        }
         schedule_mark_thread_block();
         yieldlock_unlock(&process->lock);
         schedule_thread_yield();
         // 回来之后继续上锁
         yieldlock_lock(&process->lock);
+        // 被唤醒代表被提出等待队列了，需要重新加入
+        in_queue = false;
 
     }
 
     // 找到要等的进程了
+    // 也需要把children_processes中删去child
+    Assert(child != NULL);
+    pcb_t* removed = hash_table_remove(&process->children_processes, child->id);
+    Assert(removed == child);
     if (status != nullptr) {
         *status = child->exit_code;
+    }
+    if(counted_waiter){
+        Assert(process->waiting_threads_count > 0);
+        process->waiting_threads_count--;
     }
 
     yieldlock_unlock(&process->lock);
@@ -367,21 +411,59 @@ void process_exit(int32_t exit_code){
     tcb_t* thread = get_crt_thread();
     pcb_t* parent = process->parent;
     Assert(parent != NULL);
+    Assert(process != get_init_process());
 
     // 对于结束进程这样涉及大量资源改变的底层操作，需要整个过程不可被中断切割
     uint32_t init_interrupt_status = interrupt_disable();
 
     yieldlock_lock(&process->lock);
+    if(process->waiting_threads_count > 0){
+        Panic("process_exit: other thread is waiting in process_wait");
+    }
     // 除了当前线程，还有其他线程在运行
     if(process->threads.size > 1){
         clear_crt_process_other_thread_locked();
     }
+    yieldlock_unlock(&process->lock);
 
-    // 此处应该传给init进程来回收
-    if(process->children_processes.size > 0 || process->exit_children_processes.size > 0){
-        Panic("process_exit: thread still have child process, can't exit!!!");
+// ================================= 若当前进程还有子进程，扔给init进程============================================
+    pcb_t* init_process = get_init_process();
+    yieldlock_lock(&init_process->lock);
+    yieldlock_lock(&process->lock);
+    // 先移动子进程
+    while (process->children_processes.size > 0) {
+        pcb_t* child = hash_table_get_first(&process->children_processes);
+        Assert(child != NULL);
+
+        child = hash_table_remove(&process->children_processes, child->id);
+        Assert(child != NULL);
+
+        child->parent = init_process;
+        hash_table_put(&init_process->children_processes, child->id, child);
     }
+    // 在把已退出的放到init进程中
+    while (process->exit_children_processes.size > 0) {
+        pcb_t* child = hash_table_get_first(&process->exit_children_processes);
+        Assert(child != NULL);
 
+        child = hash_table_remove(&process->exit_children_processes, child->id);
+        Assert(child != NULL);
+
+        child->parent = init_process;
+        hash_table_put(&init_process->children_processes, child->id, child);
+        hash_table_put(&init_process->exit_children_processes, child->id, child);
+    }
+    // 由于把已退出的放入了，需要再唤醒init，让其清理
+    while (init_process->wait_any_exit_queue != NULL) {
+        Assert(init_process->wait_any_exit_queue->target_pid == 0);
+        add_thread_node_to_schedule(init_process->wait_any_exit_queue->task);
+        init_process->wait_any_exit_queue = init_process->wait_any_exit_queue->next;
+    }
+    yieldlock_unlock(&process->lock);
+    yieldlock_unlock(&init_process->lock);
+// ================================= 若当前进程还有子进程，扔给init进程============================================
+
+    yieldlock_lock(&process->lock);
     tcb_t* removed_thread = hash_table_remove(&process->threads, thread->id);
     Assert(removed_thread == thread);
 
@@ -392,20 +474,28 @@ void process_exit(int32_t exit_code){
     // 否则会直接assert报错，因为release_crt_process_resources_locked 找不到当前process了
     thread->process = nullptr;
 
-    yieldlock_unlock(&process->lock);
 
+    // 保证是先上锁父进程再上锁子进程，保持和wait代码的一致
+    yieldlock_unlock(&process->lock);
     yieldlock_lock(&parent->lock);
+    yieldlock_lock(&process->lock);
     // 把当前进程加入父母的退出进程队列，且如果进程正在等待自己或者任何一个进程结束，则唤醒他
     hash_table_put(&parent->exit_children_processes, process->id, process);
     // 父进程真的在wait，才会唤醒线程
-    if(parent->waiting_thread_node != NULL){
-        Assert(parent->waiting_child_pid > 0);
-        if(parent->waiting_child_pid == parent->id || parent->waiting_child_pid == process->id){
-            add_thread_node_to_schedule(parent->waiting_thread_node);
-            parent->waiting_thread_node = NULL; // 唤醒后清空防止重复唤醒
-        }
+
+    // 将这两个队列中的wait线程都唤醒
+    while (process->exit_wait_queue != NULL){
+        Assert(process->exit_wait_queue->target_pid == process->id);
+        add_thread_node_to_schedule(process->exit_wait_queue->task);
+        process->exit_wait_queue = process->exit_wait_queue->next;
+    }
+    while (parent->wait_any_exit_queue != NULL){
+        Assert(parent->wait_any_exit_queue->target_pid == 0);
+        add_thread_node_to_schedule(parent->wait_any_exit_queue->task);
+        parent->wait_any_exit_queue = parent->wait_any_exit_queue->next;
     }
     
+    yieldlock_unlock(&process->lock);
     yieldlock_unlock(&parent->lock);
 
     // 此时仍然是关中断状态，可以直接调用 exit，它内部又会 disable 一次(安全重复)并 context_switch 不再回来

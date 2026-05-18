@@ -10,7 +10,11 @@ int main(int32_t argc, char** agrv){
     if(pid < 0){
         syscall_print("fork failed\n");
     }else if(pid > 0){
-        while(1){}
+        // 对于父进程，要用于回收僵尸进程
+        while(1){
+            uint32_t status;
+            syscall_wait(0, &status);
+        }
     }else{
         char* prog = "shell";
         syscall_exec(prog, 0, NULL);

@@ -36,7 +36,7 @@ resume_thread:
     pop ecx
     pop eax
     
-    sti
+    ; sti , 这里不能sti，必须在最后回到的地方sti才行
     ret
 
 

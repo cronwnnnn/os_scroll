@@ -33,6 +33,7 @@ tcb_t* get_crt_thread();
 
 
 static pcb_t* main_process;
+static pcb_t* init_process;
 
 static thread_node_t* crt_thread_node = NULL;
 static thread_node_t* main_thread_node;
@@ -96,7 +97,8 @@ static void kernel_main_thread(){
     kernel_clean_node = clean_thread->crt_node_ptr;
     add_thread_node_to_schedule(kernel_clean_node);
 
-    pcb_t* init_process = create_and_add_process(nullptr, true);
+    init_process = create_and_add_process(nullptr, true);
+    Assert(init_process != NULL);
     tcb_t* init_thread = create_new_kernel_thread(init_process, "kernel init", kernel_init_thread);
     add_thread_node_to_schedule(init_thread->crt_node_ptr);
 
@@ -136,7 +138,7 @@ static void kernel_clean_thread(){
         // =================清理死掉的线程=================
         while (clearing_tasks.size > 0)
         {
-            monitor_print("clean 1 thread\n");
+            // monitor_print("clean 1 thread\n");
             linked_list_node_t* head = clearing_tasks.head;
             linked_list_remove(&clearing_tasks, head);
             tcb_t* thread = (tcb_t*)head->ptr;
@@ -149,7 +151,7 @@ static void kernel_clean_thread(){
         // =================清理死掉的进程=================
         while (clearing_processes.size > 0)
         {
-            monitor_print("clean 1 process\n");
+            // monitor_print("clean 1 process\n");
             linked_list_node_t* head = clearing_processes.head;
             linked_list_remove(&clearing_processes, head);
             pcb_t* process = (pcb_t*)head->ptr;
@@ -309,10 +311,10 @@ void add_dead_process(pcb_t* process){
 
 
 void schedule_thread_yield(){
-    disable_interrupt();
-    
+    uint32_t init_status = interrupt_disable();
     // 内部已经自动判断ready_task中是否有值了
     do_context_switch();
+    interrupt_restore(init_status);
 }
 
 void schedule_thread_exit(){
@@ -327,10 +329,11 @@ void schedule_thread_exit(){
     thread->status = TASK_DEAD;
 
     do_context_switch();
+    Panic("never be here, in schedule_thread_exit");
 }
 
 void schedule_thread_normal_exit(){
-    Panic("should not be here!!! in normal exit");
+    Panic("should not be here!!! in thread normal exit");
 }
 
 void schedule_mark_thread_block() {
@@ -372,4 +375,9 @@ void disable_preempt() {
 
 void enable_preempt() {
     get_crt_thread()->preempt_count -= 1;
+}
+
+pcb_t* get_init_process(){
+    Assert(init_process != NULL);
+    return init_process;
 }

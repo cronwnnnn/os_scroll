@@ -19,8 +19,9 @@ void init_task_manager() {
 }
 
 static void kernel_thread(thread_func* function) {
-  function();
-  schedule_thread_exit();
+    enable_interrupt();
+    function();
+    schedule_thread_exit();
 }
 
 tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t priority, uint8_t is_user_thread){
