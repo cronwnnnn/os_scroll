@@ -13,7 +13,6 @@
 #include "mem/page.h"
 #include "task/process.h"
 
-#include "syscall/syscall.h"
 void user_mode_fork_test();
 
 

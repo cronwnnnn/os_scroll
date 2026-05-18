@@ -1,4 +1,4 @@
-#include "syscall/syscall.h"
+#include "user_sys/syscall.h"
 #include "common/types.h"
 #include "user_sys/stdlib.h"
 #include "user_sys/user_io.h"

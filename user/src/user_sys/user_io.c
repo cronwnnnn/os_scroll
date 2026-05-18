@@ -1,5 +1,5 @@
 #include "common/types.h"
-#include "syscall/syscall.h"
+#include "user_sys/syscall.h"
 
 void printf(char* str, ...);
 char buf[500];

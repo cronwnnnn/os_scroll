@@ -3,19 +3,20 @@ LIB_DIR=./lib
 BIN_DIR=./progs
 
 SYS_INC_DIR=../src/include
-SYS_LIB_DIR=../build/src
+USER_INC_DIR=$(SRC_DIR)/include
 
 DEP_FLAGS = -MMD -MP
 
 CC=gcc
+AS=nasm
 CFLAGS=-m32 -nostdlib -nostdinc -fno-builtin -fno-stack-protector -fno-pic -no-pie -Wall -Werror -g $(DEP_FLAGS)
-IFLAGS=-I${SRC_DIR} -I${SYS_INC_DIR}
+IFLAGS=-I${USER_INC_DIR} -I${SYS_INC_DIR}
 LDFLAGS=-m elf_i386 -T link.ld
 
-# 在这里列出确实存在的系统库文件（复用内核编译出来的 .o）
+# 在这里列出确实存在的系统库文件
 SYS_OBJS = \
-	$(SYS_LIB_DIR)/syscall/syscall.o \
-	$(SYS_LIB_DIR)/syscall/syscall_trigger.o \
+	$(LIB_DIR)/user_sys/syscall.o \
+	$(LIB_DIR)/user_sys/syscall_trigger.o \
 	$(LIB_DIR)/user_sys/common.o \
 	$(LIB_DIR)/user_sys/stdlib.o \
 	$(LIB_DIR)/user_sys/user_io.o
@@ -25,13 +26,14 @@ PROGS = \
   ${BIN_DIR}/hello \
   ${BIN_DIR}/shell \
   ${BIN_DIR}/ls \
-  ${BIN_DIR}/init
+  ${BIN_DIR}/init 
 
 all: prepare image
 
 prepare:
 	mkdir -p $(BIN_DIR)
 	mkdir -p $(LIB_DIR)/user_sys
+	mkdir -p $(LIB_DIR)/user_file
 
 image: disk_image_writer progs greeting file_system_img
 	./fs/disk_image_writer ./progs
@@ -50,15 +52,17 @@ progs: ${PROGS}
 greeting:
 	cp greeting.txt ./progs/
 
-$(BIN_DIR)/%: $(LIB_DIR)/%.o ${SYS_OBJS}
+$(BIN_DIR)/%: $(LIB_DIR)/user_file/%.o ${SYS_OBJS}
 	ld $(LDFLAGS) $< ${SYS_OBJS} -o $@
 
-$(LIB_DIR)/%.o: $(SRC_DIR)/%.c
+$(LIB_DIR)/user_file/%.o: $(SRC_DIR)/user_file/%.c
 	$(CC) $(CFLAGS) $(IFLAGS) -c $< -o $@
 
-$(LIB_DIR)/user_sys/%.o: $(SRC_DIR)/user_sys/%.c $(SRC_DIR)/user_sys/%.h
-	@mkdir -p $(LIB_DIR)/user_sys
+$(LIB_DIR)/user_sys/%.o: $(SRC_DIR)/user_sys/%.c
 	$(CC) $(CFLAGS) $(IFLAGS) -c $< -o $@
+
+$(LIB_DIR)/user_sys/%.o: $(SRC_DIR)/user_sys/%.asm
+	$(AS) -f elf32 $< -o $@
 
 clean:
 	rm -rf ${BIN_DIR} ${LIB_DIR} user_disk_image disk.img ./fs/disk_image_writer ./fs/mkfs

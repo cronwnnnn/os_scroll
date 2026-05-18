@@ -1,4 +1,4 @@
-#include "syscall/syscall.h"
+#include "user_sys/syscall.h"
 #include "user_sys/common.h"
 
 extern int main(int32_t, char**);

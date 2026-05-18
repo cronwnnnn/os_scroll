@@ -1,4 +1,4 @@
-#include "syscall/syscall.h"
+#include "user_sys/syscall.h"
 
 extern int32_t trigger_syscall_fork();
 extern void trigger_syscall_print(char* str);
