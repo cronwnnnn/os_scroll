@@ -18,6 +18,7 @@ void map_page_with_frame_impl(uint32_t vaddr, int32_t frame);
 void release_pages(uint32_t vaddr, size_t page_count, bool frame_free);
 void release_phy_frame(uint32_t frame);
 void handle_cow_fault(uint32_t vaddr);
+static void unmap_low_identity();
 static inline void inc_cow_ref(uint32_t frame);
 
 // 用于查找frame中，优化每次从头遍历的问题
@@ -108,11 +109,18 @@ void init_page() {
     // 至于第二个参数不用 + page_size - 1，是因为kernelbinsize是1mb，不会出现余数
 
     // 删除已经加载的kenel bin 文件，将最后一个参数设为false正式因为之前根本没置0，完全可以当作空的
+    unmap_low_identity();
     release_pages(0xffffffff - KERNEL_BIN_LOAD_SIZE + 1, KERNEL_BIN_LOAD_SIZE / PAGE_SIZE, false);
 
     register_interrupt_handler(14, &pagefault_handler);
 }
 
+// 清除过渡用的恒等映射
+static void unmap_low_identity() {
+    pde_t* pd = (pde_t*)PAGE_DIR_VIRTUAL;
+    *((uint32_t*)&pd[0]) = 0;
+    reload_page_dir(current_page_directory);
+}
 
 
 /*===================不能直接调用这个函数，而是调用release_pages=================*/
