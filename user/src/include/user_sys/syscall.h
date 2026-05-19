@@ -1,6 +1,7 @@
 #ifndef SYSCALL_SYSCALL_H
 #define SSYSCALL_SYSCALL_H
 #include "common/types.h"
+#include "driver/keyboard.h"
 
 int32_t syscall_fork();
 void syscall_print(char* str);
@@ -14,5 +15,7 @@ int32_t syscall_get_ticks();
 int32_t syscall_video_set_mode(uint32_t mode);
 int32_t syscall_video_blit(uint8_t* buffer, uint32_t width, uint32_t height);
 int32_t syscall_video_set_palette(uint32_t index, uint32_t r, uint32_t g, uint32_t b);
+int32_t syscall_poll_keyboard_event(keyboard_event_t* event);
+int32_t syscall_get_key_state(uint32_t key);
 
 #endif

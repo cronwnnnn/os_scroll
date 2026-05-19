@@ -29,7 +29,7 @@ static int32_t syscall_print_impl(char* str) {
 }
 
 static int32_t syscall_read_char_impl() {
-    return read_keyboard_char();
+    return read_keyboard_char_wait();
 }
 
 static int32_t syscall_wait_impl(int32_t pid, uint32_t* status) {
@@ -58,6 +58,13 @@ static int32_t syscall_video_set_palette_impl(uint32_t index, uint32_t r, uint32
     return 0;
 }
 
+int32_t syscall_poll_keyboard_event_impl(keyboard_event_t* event){
+    return read_keyboard_char_right_now(event);
+}
+int32_t syscall_get_key_state_impl(uint32_t key){
+    return get_key_state(key);
+}
+
 int32_t syscall_handler(isr_params_t isr_params){
     // eax中存的是系统调用号
     int32_t syscall_num = isr_params.eax;
@@ -84,6 +91,10 @@ int32_t syscall_handler(isr_params_t isr_params){
             return syscall_video_blit_impl((uint8_t*)isr_params.ecx, isr_params.edx, isr_params.ebx);
         case SYSCALL_VIDEO_SET_PALETTE_NUM:
             return syscall_video_set_palette_impl(isr_params.ecx, isr_params.edx, isr_params.ebx, isr_params.esi);
+        case SYSCALL_POLL_KEYBOARD_EVENT_NUM:
+            return syscall_poll_keyboard_event_impl((keyboard_event_t*)isr_params.ecx);
+        case SYSCALL_GET_KEY_STATE_NUM:
+            return syscall_get_key_state_impl(isr_params.ecx);
 
 
         default:

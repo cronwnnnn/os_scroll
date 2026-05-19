@@ -24,6 +24,8 @@ typedef void (*isr_t)(isr_params_t);
 #define SYSCALL_VIDEO_SET_MODE_NUM 14
 #define SYSCALL_VIDEO_BLIT_NUM    15
 #define SYSCALL_VIDEO_SET_PALETTE_NUM 16
+#define SYSCALL_POLL_KEYBOARD_EVENT_NUM 17
+#define SYSCALL_GET_KEY_STATE_NUM 18
 
 
 int32_t syscall_handler(isr_params_t isr_params);
