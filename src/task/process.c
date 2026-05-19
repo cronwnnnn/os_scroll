@@ -104,7 +104,7 @@ int32_t process_fork(){
 int32_t process_exec(char* path, int32_t argc, char* argv[]){
     file_stat_t stat;
     if(stat_file(path, &stat) != 0){
-        monitor_printf("Command %s not found\n", path);
+        monitor_printf("file %s not found\n", path);
         return -1;
     }
 

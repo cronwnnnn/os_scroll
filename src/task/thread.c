@@ -19,26 +19,17 @@ static id_pool_t thread_id_pool;
 static bitmap_t kernel_stack_slots;
 static yieldlock_t kernel_stack_slots_lock;
 
-static void init_kernel_stack_area();
 static uint32_t alloc_kernel_stack_slot();
 static void release_kernel_stack_slot(uint32_t stack_alloc);
 
 void init_task_manager() {
-  id_pool_init(&thread_id_pool, 2048, 32768);
-  kernel_stack_slots = bitmap_create(nullptr, KERNEL_STACK_MAX_SLOTS);
-  yieldlock_init(&kernel_stack_slots_lock);
-  init_kernel_stack_area();
-}
-
-static void init_kernel_stack_area(){
     Assert((KERNEL_STACK_SIZE % PAGE_SIZE) == 0);
     Assert((KERNEL_STACK_SLOT_SIZE % PAGE_SIZE) == 0);
-
-    for(uint32_t addr = KERNEL_STACK_AREA_START; addr < KERNEL_STACK_AREA_END; addr += 4 * 1024 * 1024){
-        map_page(addr);
-        release_pages(addr, 1, true);
-    }
+    id_pool_init(&thread_id_pool, 2048, 32768);
+    kernel_stack_slots = bitmap_create(nullptr, KERNEL_STACK_MAX_SLOTS);
+    yieldlock_init(&kernel_stack_slots_lock);
 }
+
 
 // 分配内核栈的地址
 static uint32_t alloc_kernel_stack_slot(){

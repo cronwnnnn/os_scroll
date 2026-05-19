@@ -17,6 +17,8 @@ void map_page_with_frame(uint32_t vaddr, int32_t frame);
 void map_page_with_frame_impl(uint32_t vaddr, int32_t frame);
 void release_pages(uint32_t vaddr, size_t page_count, bool frame_free);
 void release_phy_frame(uint32_t frame);
+int32_t alloc_phy_frame();
+void clear_page(uint32_t vaddr);
 void handle_cow_fault(uint32_t vaddr);
 static void unmap_low_identity();
 static inline void inc_cow_ref(uint32_t frame);
@@ -175,6 +177,30 @@ void init_page() {
     // 删除已经加载的kenel bin 文件，将最后一个参数设为false正式因为之前根本没置0，完全可以当作空的
     unmap_low_identity();
     release_pages(0xffffffff - KERNEL_BIN_LOAD_SIZE + 1, KERNEL_BIN_LOAD_SIZE / PAGE_SIZE, false);
+    // 将高地址的页目录项提前分配
+    pde_t* pd = (pde_t*)PAGE_DIR_VIRTUAL;
+    for(int32_t i = 768; i < 1024; i++){
+        if(i == (PAGE_TABLES_VIRTUAL >> 22)){
+            continue;
+        }
+        pde_t* pde = pd + i;
+        if(pde->present == 0){
+            int32_t addr = alloc_phy_frame();
+            if(addr < 0){
+                monitor_printf("couldn't alloc frame for page table on %d\n", i);
+                Panic("couldn't alloc frame for page table");
+            }
+            pde->present = 1;
+            pde->rw = 1;
+            pde->user = 0;
+            pde->frame = addr;
+            
+            // 分配完成之后刷新页目录使其能被查到,并清理页表处的物理地址，防止错误映射
+            flush_tlb_all();
+            clear_page(PAGE_TABLES_VIRTUAL + i * PAGE_SIZE);
+        }
+    }
+    flush_tlb_all();
 
     register_interrupt_handler(14, &pagefault_handler);
 }
