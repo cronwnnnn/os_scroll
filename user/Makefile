@@ -26,6 +26,7 @@ PROGS = \
   ${BIN_DIR}/hello \
   ${BIN_DIR}/shell \
   ${BIN_DIR}/ls \
+  ${BIN_DIR}/os_test \
   ${BIN_DIR}/init 
 
 all: prepare image
