@@ -16,7 +16,7 @@ int main(int32_t argc, char** agrv){
             syscall_wait(0, &status);
         }
     }else{
-        char* prog = "shell";
-        syscall_exec(prog, 0, NULL);
+        char* argv[] = {"shell", NULL};
+        syscall_exec(argv[0], 1, argv);
     } 
 }

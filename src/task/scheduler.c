@@ -114,7 +114,8 @@ static void kernel_main_thread(){
 static void kernel_init_thread(){
     pcb_t* crt_process = get_crt_process();
     crt_process->is_kernel_process = false;
-    if(process_exec("init", 0, nullptr) == -1){
+    char* argv[] = {"init", nullptr};
+    if(process_exec(argv[0], 1, argv) == -1){
         Panic("init process can't exec!");
     }
 }

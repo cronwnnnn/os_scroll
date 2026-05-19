@@ -11,19 +11,15 @@ static void run_program(char** argv){
     while(argv[argc]){
         argc++;
     }
-    if(!strcmp(argv[0], "ls")){
-        int32_t pid = syscall_fork();
-        // 父进程
-        if(pid < 0){
-            printf("fork failed!");
-        }else if(pid > 0){
-            // 父进程
-            uint32_t status;
-            syscall_wait(pid, &status);
-        }else{
-            int32_t ret = syscall_exec(argv[0], argc, argv);
-            syscall_exit(ret);
-        }
+    int32_t pid = syscall_fork();
+    if(pid < 0){
+        printf("fork failed!\n");
+    }else if(pid > 0){
+        uint32_t status;
+        syscall_wait(pid, &status);
+    }else{
+        int32_t ret = syscall_exec(argv[0], argc, argv);
+        syscall_exit(ret);
     }
     return;
 }

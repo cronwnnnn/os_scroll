@@ -167,8 +167,6 @@ uint32_t prepare_user_stack(
         for(int32_t i = 0; i < argc; i++){
             total_argv_length += strlen(argv[i]) + 1;
         }
-        // thread->name的地址也在内核中，也需要拷贝下来
-        total_argv_length += strlen(thread->name) + 1;
 
         // 用于存储参数字符串
         stack_top -= total_argv_length;
@@ -180,26 +178,18 @@ uint32_t prepare_user_stack(
             Panic("prepare_user_stack: user stack overflow");
         }
 
-        // 注意这里的args的类型是char**, 是指向char*的数组
-        char* args[argc+1];
+        // 现在的exec调用时就会再argv[0]中填入path，不用自己加，但是argv的最后要加NULL，符合标准.
+        char* args[argc + 1];
         char* args_stack_addr = (char*)stack_top;
 
-        // 将线程的名字拷贝到栈顶作为argv[0]
-        int32_t len = strcpy_with_len(args_stack_addr, thread->name);
-        args[0] = args_stack_addr;
-        args_stack_addr += (len+1);
-
-        // 现在将内核高地址处的字符串参数拷贝到用户栈中
-        // 这样在访问时不会造成越权 
         for(int32_t i = 0; i < argc; i++){
-            // 先将字符串拷贝到用户栈中，然后args指向该地址
             int32_t len = strcpy_with_len(args_stack_addr, argv[i]);
-            args[i+1] = args_stack_addr;
-            args_stack_addr += (len+1);
+            args[i] = args_stack_addr;
+            args_stack_addr += (len + 1);
         }
+        args[argc] = NULL;
 
-
-        stack_top -= (uint32_t)(argc+1) * 4;
+        stack_top -= (uint32_t)(argc + 1) * 4;
         uint32_t argv_start = stack_top;
         for(int32_t i = 0; i < argc + 1; i++){
             *((char**)argv_start + i) = args[i];
@@ -209,7 +199,7 @@ uint32_t prepare_user_stack(
         stack_top -= 4;
         *((uint32_t*)stack_top) = argv_start;
         stack_top -= 4;
-        *((uint32_t*)stack_top) = (uint32_t)argc + 1;
+        *((uint32_t*)stack_top) = (uint32_t)argc;
 
         stack_top -= 4;
         *((uint32_t*)stack_top) = return_addr;

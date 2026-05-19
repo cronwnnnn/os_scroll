@@ -157,6 +157,8 @@ int32_t process_exec(char* path, int32_t argc, char* argv[]){
 
     uint32_t kernel_stack = crt_thread->kernel_stack;
     crt_thread->kernel_esp = kernel_stack + KERNEL_STACK_SIZE - (sizeof(interrupt_stack_t) + sizeof(switch_stack_t)); 
+    strcpy_with_len(crt_process->name, path_copy);
+    strcpy_with_len(crt_thread->name, path_copy);
     prepare_user_stack(crt_thread, user_stack_top, argc, args, (uint32_t)schedule_thread_normal_exit);
     // ============================== 为当前线程分配新的用户栈 =======================================
     
@@ -170,9 +172,6 @@ int32_t process_exec(char* path, int32_t argc, char* argv[]){
     }
     kfree(read_buffer);
 
-    // 为进程和线程分配新名字
-    strcpy_with_len(crt_process->name, path_copy);
-    strcpy_with_len(crt_thread->name, path_copy);
 
     // ============================ 修改当前线程的中断栈，让其返回后转至loader file ====================================
     interrupt_stack_t* is = (interrupt_stack_t*)(kernel_stack + KERNEL_STACK_SIZE - sizeof(interrupt_stack_t));
