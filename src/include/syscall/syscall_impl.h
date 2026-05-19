@@ -20,6 +20,10 @@ typedef void (*isr_t)(isr_params_t);
 #define SYSCALL_THREAD_EXIT_NUM   10
 #define SYSCALL_READ_CHAR_NUM     11
 #define SYSCALL_MOVE_CURSOR_NUM   12
+#define SYSCALL_GET_TICKS_NUM     13
+#define SYSCALL_VIDEO_SET_MODE_NUM 14
+#define SYSCALL_VIDEO_BLIT_NUM    15
+#define SYSCALL_VIDEO_SET_PALETTE_NUM 16
 
 
 int32_t syscall_handler(isr_params_t isr_params);

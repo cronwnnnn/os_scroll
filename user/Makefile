@@ -27,6 +27,7 @@ PROGS = \
   ${BIN_DIR}/shell \
   ${BIN_DIR}/ls \
   ${BIN_DIR}/os_test \
+  ${BIN_DIR}/video_test \
   ${BIN_DIR}/init 
 
 all: prepare image

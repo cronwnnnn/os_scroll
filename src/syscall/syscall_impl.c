@@ -4,7 +4,9 @@
 #include "task/process.h"
 #include "monitor/monitor.h"
 #include "driver/keyboard.h"
+#include "driver/video.h"
 #include "fs/vfs.h"
+#include "interrupt/time.h"
 
 
 static int32_t syscall_exit_impl(int32_t exit_num){
@@ -38,8 +40,23 @@ static int32_t syscall_listdir_impl(char* dir){
     return list_dir(dir);
 }
 
+static int32_t syscall_get_ticks_impl() {
+    return (int32_t)getTick();
+}
 
+static int32_t syscall_video_set_mode_impl(uint32_t mode) {
+    video_set_mode(mode);
+    return 0;
+}
 
+static int32_t syscall_video_blit_impl(uint8_t* buffer, uint32_t width, uint32_t height) {
+    return video_blit(buffer, width, height);
+}
+
+static int32_t syscall_video_set_palette_impl(uint32_t index, uint32_t r, uint32_t g, uint32_t b) {
+    video_set_palette(index, r, g, b);
+    return 0;
+}
 
 int32_t syscall_handler(isr_params_t isr_params){
     // eax中存的是系统调用号
@@ -59,6 +76,14 @@ int32_t syscall_handler(isr_params_t isr_params){
             return syscall_wait_impl(isr_params.ecx, (uint32_t*)isr_params.edx);
         case SYSCALL_LISTDIR_NUM:
             return syscall_listdir_impl((char*)isr_params.ecx);
+        case SYSCALL_GET_TICKS_NUM:
+            return syscall_get_ticks_impl();
+        case SYSCALL_VIDEO_SET_MODE_NUM:
+            return syscall_video_set_mode_impl(isr_params.ecx);
+        case SYSCALL_VIDEO_BLIT_NUM:
+            return syscall_video_blit_impl((uint8_t*)isr_params.ecx, isr_params.edx, isr_params.ebx);
+        case SYSCALL_VIDEO_SET_PALETTE_NUM:
+            return syscall_video_set_palette_impl(isr_params.ecx, isr_params.edx, isr_params.ebx, isr_params.esi);
 
 
         default:
