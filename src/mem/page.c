@@ -49,6 +49,51 @@ static inline void flush_tlb_all(void) {
     asm volatile ("mov %%cr3, %%eax; mov %%eax, %%cr3" ::: "eax", "memory");
 }
 
+static bool is_current_user_stack_addr(uint32_t addr, bool* is_guard_page){
+    if(!multi_task_is_enabled()){
+        return false;
+    }
+
+    pcb_t* process = get_crt_process();
+    for(int32_t i = 0; i < process->threads.buckets_num; i++){
+        linked_list_t* bucket = &process->threads.buckets[i];
+        linked_list_node_t* kv_node = bucket->head;
+        while(kv_node != nullptr){
+            hash_table_kv_t* kv = (hash_table_kv_t*)kv_node->ptr;
+            tcb_t* thread = (tcb_t*)kv->v_ptr;
+            kv_node = kv_node->next;
+
+            if(thread->user_stack_index < 0){
+                continue;
+            }
+
+            uint32_t stack_top = USER_STACK_TOP - thread->user_stack_index * USER_STACK_SIZE;
+            uint32_t stack_bottom = stack_top - USER_STACK_SIZE;
+            uint32_t guard_end = stack_bottom + PAGE_SIZE;
+
+            if(addr >= stack_bottom && addr < stack_top){
+                *is_guard_page = (addr < guard_end);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+static bool is_kernel_stack_area_addr(uint32_t addr){
+    return addr >= KERNEL_STACK_AREA_START && addr < KERNEL_STACK_AREA_END;
+}
+
+static bool is_kernel_stack_guard_addr(uint32_t addr){
+    if(!is_kernel_stack_area_addr(addr)){
+        return false;
+    }
+
+    uint32_t offset = (addr - KERNEL_STACK_AREA_START) % KERNEL_STACK_SLOT_SIZE;
+    return offset < KERNEL_STACK_GUARD_SIZE;
+}
+
 static void pagefault_handler(isr_params_t regs) {
     uint32_t faulting_address;
     asm volatile ("mov %%cr2, %0": "=r"(faulting_address));
@@ -63,6 +108,17 @@ static void pagefault_handler(isr_params_t regs) {
     }
 
     if (!present) {
+        bool is_guard_page = false;
+        if(user_mode && is_current_user_stack_addr(faulting_address, &is_guard_page) && is_guard_page){
+            Panic("User stack overflow at 0x%x", faulting_address);
+        }
+        if(!user_mode && is_kernel_stack_area_addr(faulting_address)){
+            if(is_kernel_stack_guard_addr(faulting_address)){
+                Panic("Kernel stack overflow at 0x%x", faulting_address);
+            }
+            Panic("Invalid kernel stack area access at 0x%x", faulting_address);
+        }
+
         // 需要开中断的地方开启,页分配可能很耗时
         enable_interrupt();
         // 找到是否由于页不存在导致的缺页

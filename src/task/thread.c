@@ -5,17 +5,71 @@
 #include "common/secure.h"
 #include "mem/page.h"
 #include "utils/id_pool.h"
+#include "utils/bit_map.h"
+#include "sync/yieldlock.h"
 #include "mem/gdt.h"
 #include "task/scheduler.h"
+#include "task/process.h"
 
 extern void switch_to_user_mode();
 extern void syscall_fork_exit();
 
 
 static id_pool_t thread_id_pool;
+static bitmap_t kernel_stack_slots;
+static yieldlock_t kernel_stack_slots_lock;
+
+static void init_kernel_stack_area();
+static uint32_t alloc_kernel_stack_slot();
+static void release_kernel_stack_slot(uint32_t stack_alloc);
 
 void init_task_manager() {
   id_pool_init(&thread_id_pool, 2048, 32768);
+  kernel_stack_slots = bitmap_create(nullptr, KERNEL_STACK_MAX_SLOTS);
+  yieldlock_init(&kernel_stack_slots_lock);
+  init_kernel_stack_area();
+}
+
+static void init_kernel_stack_area(){
+    Assert((KERNEL_STACK_SIZE % PAGE_SIZE) == 0);
+    Assert((KERNEL_STACK_SLOT_SIZE % PAGE_SIZE) == 0);
+
+    for(uint32_t addr = KERNEL_STACK_AREA_START; addr < KERNEL_STACK_AREA_END; addr += 4 * 1024 * 1024){
+        map_page(addr);
+        release_pages(addr, 1, true);
+    }
+}
+
+// 分配内核栈的地址
+static uint32_t alloc_kernel_stack_slot(){
+    uint32_t slot;
+    yieldlock_lock(&kernel_stack_slots_lock);
+    if(!bitmap_alloc_first_free(&kernel_stack_slots, &slot)){
+        yieldlock_unlock(&kernel_stack_slots_lock);
+        Panic("No free kernel stack slots");
+    }
+    yieldlock_unlock(&kernel_stack_slots_lock);
+
+    uint32_t stack_alloc = KERNEL_STACK_AREA_START + slot * KERNEL_STACK_SLOT_SIZE;
+    uint32_t kernel_stack = stack_alloc + KERNEL_STACK_GUARD_SIZE;
+    for(int32_t i = 0; i < KERNEL_STACK_SIZE / PAGE_SIZE; i++){
+        map_page(kernel_stack + i * PAGE_SIZE);
+    }
+    return stack_alloc;
+}
+
+static void release_kernel_stack_slot(uint32_t stack_alloc){
+    Assert(stack_alloc >= KERNEL_STACK_AREA_START);
+    Assert(stack_alloc < KERNEL_STACK_AREA_END);
+    Assert(((stack_alloc - KERNEL_STACK_AREA_START) % KERNEL_STACK_SLOT_SIZE) == 0);
+
+    uint32_t kernel_stack = stack_alloc + KERNEL_STACK_GUARD_SIZE;
+    release_pages(kernel_stack, KERNEL_STACK_SIZE / PAGE_SIZE, true);
+
+    uint32_t slot = (stack_alloc - KERNEL_STACK_AREA_START) / KERNEL_STACK_SLOT_SIZE;
+    yieldlock_lock(&kernel_stack_slots_lock);
+    bitmap_clear_bit(&kernel_stack_slots, slot);
+    yieldlock_unlock(&kernel_stack_slots_lock);
 }
 
 static void kernel_thread(thread_func* function) {
@@ -58,16 +112,11 @@ tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t pr
     thread->user_stack_index = -1;
     thread->need_reschedule = false;
 
-    uint32_t kernel_stack = (uint32_t)kmalloc_align(KERNEL_STACK_SIZE);
-    Assert(kernel_stack != 0);
+    thread->kernel_stack_alloc = alloc_kernel_stack_slot();
+    thread->kernel_stack = thread->kernel_stack_alloc + KERNEL_STACK_GUARD_SIZE;
 
-    for(int32_t i = 0; i < KERNEL_STACK_SIZE / PAGE_SIZE; i++){
-        map_page(kernel_stack + i * PAGE_SIZE);
-    }
-
-    memset((void*)kernel_stack, 0, KERNEL_STACK_SIZE);
-    thread->kernel_stack = kernel_stack;
-    thread->kernel_esp = kernel_stack + KERNEL_STACK_SIZE - (sizeof(interrupt_stack_t) + sizeof(switch_stack_t));
+    memset((void*)thread->kernel_stack, 0, KERNEL_STACK_SIZE);
+    thread->kernel_esp = thread->kernel_stack + KERNEL_STACK_SIZE - (sizeof(interrupt_stack_t) + sizeof(switch_stack_t));
     switch_stack_t* ss = (switch_stack_t*) thread->kernel_esp;
 
     ss->edi = 0;
@@ -115,12 +164,13 @@ tcb_t* init_thread(tcb_t* thread, char* name, thread_func* function, uint32_t pr
 
 void destroy_thread(tcb_t* thread){
     id_pool_free_id(&thread_id_pool, thread->id);
-    kfree((void*)thread->kernel_stack);
+    release_kernel_stack_slot(thread->kernel_stack_alloc);
     kfree(thread);
 }
 
 uint32_t prepare_user_stack(
     tcb_t* thread, uint32_t stack_top, int32_t argc, char** argv, uint32_t return_addr){
+        uint32_t user_stack_top = stack_top;
         uint32_t total_argv_length = 0;
 
         for(int32_t i = 0; i < argc; i++){
@@ -132,6 +182,12 @@ uint32_t prepare_user_stack(
         // 用于存储参数字符串
         stack_top -= total_argv_length;
         stack_top = stack_top / 4 * 4;
+
+        uint32_t final_stack_top = stack_top - (uint32_t)(argc + 1) * 4 - 12;
+        uint32_t stack_guard_end = user_stack_top - USER_STACK_SIZE + PAGE_SIZE;
+        if(final_stack_top < stack_guard_end){
+            Panic("prepare_user_stack: user stack overflow");
+        }
 
         // 注意这里的args的类型是char**, 是指向char*的数组
         char* args[argc+1];
@@ -197,12 +253,11 @@ tcb_t* fork_crt_thread(){
     new_thread->ticks = 0;
 
     // 需要在当前进程释放吗?不需要，高地址空间是共享的，每个内核都能看到kernel_stack
-    uint32_t kernel_stack = (uint32_t)kmalloc_align(KERNEL_STACK_SIZE);
-    for(int32_t i = 0; i < KERNEL_STACK_SIZE / PAGE_SIZE; i++){
-        map_page(kernel_stack + i * PAGE_SIZE); // <-- 进行了页表映射
-    }
+    uint32_t kernel_stack_alloc = alloc_kernel_stack_slot();
+    uint32_t kernel_stack = kernel_stack_alloc + KERNEL_STACK_GUARD_SIZE;
     memcpy((void*)kernel_stack, (void*)crt_thread->kernel_stack, KERNEL_STACK_SIZE);
 
+    new_thread->kernel_stack_alloc = kernel_stack_alloc;
     new_thread->kernel_stack = kernel_stack;
     // 指向应该返回的位置
     new_thread->kernel_esp = kernel_stack + KERNEL_STACK_SIZE - (uint32_t)(sizeof(switch_stack_t) + sizeof(interrupt_stack_t));

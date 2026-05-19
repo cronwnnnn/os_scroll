@@ -150,6 +150,7 @@ int32_t process_exec(char* path, int32_t argc, char* argv[]){
 
     crt_thread->user_stack_index = stack_index;
     uint32_t user_stack_top = USER_STACK_TOP - stack_index * USER_STACK_SIZE;
+    crt_thread->user_stack = user_stack_top;
 
     // 为用户栈直接分配物理地址
     map_page(user_stack_top - PAGE_SIZE);
@@ -238,8 +239,9 @@ tcb_t* create_new_user_thread(
 
     new_thread->user_stack_index = stack_index;
     uint32_t user_stack_top = USER_STACK_TOP - stack_index * USER_STACK_SIZE;
+    new_thread->user_stack = user_stack_top;
 
-    // 为用户栈直接分配物理地址
+    // 为用户栈直接分配物理地址,先分配一页，后面的用缺页来扩展
     map_page(user_stack_top - PAGE_SIZE);
 
     prepare_user_stack(new_thread, user_stack_top, argc, argv, (uint32_t)schedule_thread_normal_exit);

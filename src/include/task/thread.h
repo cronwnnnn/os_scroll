@@ -3,11 +3,17 @@
 #include "common/types.h"
 #include "interrupt/interrupt.h"
 #include "utils/linked_list.h"
+#include "mem/page.h"
 
 
 typedef void thread_func();
 
 #define KERNEL_STACK_SIZE 8192
+#define KERNEL_STACK_GUARD_SIZE PAGE_SIZE
+#define KERNEL_STACK_SLOT_SIZE (KERNEL_STACK_GUARD_SIZE + KERNEL_STACK_SIZE)
+#define KERNEL_STACK_AREA_START 0xE0000000
+#define KERNEL_STACK_AREA_END   0xF0000000
+#define KERNEL_STACK_MAX_SLOTS ((KERNEL_STACK_AREA_END - KERNEL_STACK_AREA_START) / KERNEL_STACK_SLOT_SIZE)
 #define THREAD_DEFAULT_PRIORITY 10
 
 #define EFLAGS_MBS    (1 << 1)
@@ -35,7 +41,8 @@ enum task_status {
 
 struct task_control_block{
     uint32_t kernel_esp;    // 指向栈的当前esp处
-    uint32_t kernel_stack;  // 指向栈的最低地址,防止栈越界
+    uint32_t kernel_stack;  // 指向可用内核栈的最低地址
+    uint32_t kernel_stack_alloc; // 内核栈的包含保护页的起始虚拟地址，为内核栈真实的最低地址
 
     int32_t id;
     char name[32];
